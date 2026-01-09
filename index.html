@@ -3,57 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball Lettering</title>
+    <title>3D Crystal Ball Lettering Fix</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Long+Cang&family=ZCOOL+QingKe+HuangYou&family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
-        
-        /* UI 面板 */
         #app-ui { 
             position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
-            background: rgba(0,0,0,0.8); backdrop-filter: blur(15px); 
+            background: rgba(0,0,0,0.85); backdrop-filter: blur(15px); 
             border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); 
         }
         .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .ui-row { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .control-group { flex: 1; display: flex; flex-direction: column; }
         label { color: #00ffff; font-size: 10px; font-weight: bold; margin-bottom: 4px; }
-        
         input[type="range"] { width: 100%; accent-color: #00ffff; }
         input[type="text"] { background: #111; border: 1px solid #0ff; color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; }
         .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; }
-        
-        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00ffff; z-index: 50; display: none; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00ffff; z-index: 50; display: none; font-weight: bold; }
     </style>
 </head>
 <body>
 
-<div id="loading">載入模型中...</div>
+<div id="loading">處理中...</div>
 <div id="canvas-container"></div>
 
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
-            <input type="text" id="textInput" value="CRYSTAL BALL 3D">
+            <input type="text" id="textInput" value="HELLO WORLD">
             <input type="color" id="colorPicker" value="#00ffff" style="width:45px; height:45px; border:none; background:none;">
-            <button class="btn" id="fontToggle">字型切換</button>
+            <button class="btn" id="fontToggle">切換字型</button>
         </div>
-        
         <div class="ui-row">
             <div class="control-group">
                 <label>旋轉速度 SPEED</label>
-                <input type="range" id="speedSlider" min="0.1" max="3.0" step="0.1" value="0.8">
+                <input type="range" id="speedSlider" min="0" max="3.0" step="0.1" value="1.0">
             </div>
             <div class="control-group">
                 <label>環繞半徑 RADIUS</label>
                 <input type="range" id="radiusSlider" min="1.0" max="1.48" step="0.01" value="1.42">
             </div>
         </div>
-
         <div class="ui-row">
-            <button class="btn" id="loadModelBtn" style="flex:1; background:#007aff;">📂 上傳 GLB 模型</button>
-            <button class="btn" id="toggleGlobe" style="flex:0.5;">隱藏玻璃</button>
+            <button class="btn" id="loadModelBtn" style="flex:1; background:#007aff;">📂 載入模型 (GLB)</button>
+            <button class="btn" id="toggleGlobe" style="flex:0.4;">隱藏球體</button>
         </div>
     </div>
 </div>
@@ -70,67 +64,51 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-    class CrystalLetteringApp {
+    class CrystalApp {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            
             this.params = {
-                speed: 0.8,
-                radius: 1.42,
-                spacing: 0.1, // 圓形模式下主要由文字長度決定間距
-                fontIdx: 0,
-                fontStyles: [
-                    '900 400px "Noto Serif TC"', 
-                    '400 400px "Long Cang"', 
-                    '400 400px "ZCOOL QingKe HuangYou"', 
-                    '900 400px "Noto Sans TC"'
-                ]
+                speed: 1.0, radius: 1.42, fontIdx: 0,
+                fontStyles: ['900 400px "Noto Serif TC"', '400 400px "Long Cang"', '400 400px "ZCOOL QingKe HuangYou"', '900 400px "Noto Sans TC"']
             };
-
-            this.loader = new GLTFLoader();
-            this.model = null;
-            this.globe = null;
             this.charGroups = [];
-            
             this.init();
         }
 
         async init() {
-            // 渲染器設定
             this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             document.getElementById('canvas-container').appendChild(this.renderer.domElement);
 
-            // 相機與軌道控制
             this.camera.position.set(0, 3, 6);
-            this.orbit = new OrbitControls(this.camera, this.renderer.domElement);
-            this.orbit.enableDamping = true;
+            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
 
-            // 環境與光線
+            // 環境光
             new RGBELoader().load('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr', (tex) => {
                 tex.mapping = THREE.EquirectangularReflectionMapping;
                 this.scene.environment = tex;
             });
 
-            this._createGlobe();
+            this._setupScene();
             this._bindUI();
             
-            // 初始文字生成
-            await this.updateText();
-            this._renderLoop();
+            // 重要：等待字型載入後才執行第一次渲染
+            await document.fonts.ready;
+            this.updateText();
+            
+            this._animate();
         }
 
-        _createGlobe() {
-            // 水晶球玻璃
-            const globeGeo = new THREE.SphereGeometry(1.5, 64, 64);
-            const globeMat = new THREE.MeshPhysicalMaterial({
-                transmission: 1.0, thickness: 0.05, ior: 1.3,
-                roughness: 0, transparent: true, opacity: 0.15, color: 0xffffff
-            });
-            this.globe = new THREE.Mesh(globeGeo, globeMat);
+        _setupScene() {
+            // 水晶球
+            this.globe = new THREE.Mesh(
+                new THREE.SphereGeometry(1.5, 64, 64),
+                new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.05, ior: 1.3, transparent: true, opacity: 0.15 })
+            );
             this.globe.position.y = 1.6;
             this.scene.add(this.globe);
 
@@ -143,30 +121,74 @@
             this.scene.add(base);
         }
 
+        async updateText() {
+            const style = this.params.fontStyles[this.params.fontIdx];
+            const textVal = document.getElementById('textInput').value || " ";
+            const color = document.getElementById('colorPicker').value;
+
+            // 清除舊物體
+            this.charGroups.forEach(g => this.scene.remove(g));
+            this.charGroups = [];
+
+            const chars = textVal.split('');
+            for (let char of chars) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512; canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.clearRect(0, 0, 512, 512);
+                ctx.font = style;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = color;
+                ctx.fillText(char, 256, 256);
+
+                const tex = new THREE.CanvasTexture(canvas);
+                const group = new THREE.Group();
+
+                for (let j = 0; j < 8; j++) {
+                    const m = new THREE.Mesh(
+                        new THREE.PlaneGeometry(0.4, 0.4),
+                        new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
+                    );
+                    m.position.z = -j * 0.01;
+                    group.add(m);
+                }
+                this.scene.add(group);
+                this.charGroups.push(group);
+            }
+        }
+
         _bindUI() {
             const get = (id) => document.getElementById(id);
-            
             get('textInput').oninput = () => this.updateText();
             get('colorPicker').oninput = () => this.updateText();
+            get('fontToggle').onclick = () => { this.params.fontIdx = (this.params.fontIdx + 1) % 4; this.updateText(); };
             get('speedSlider').oninput = (e) => this.params.speed = parseFloat(e.target.value);
             get('radiusSlider').oninput = (e) => this.params.radius = parseFloat(e.target.value);
-            
-            get('fontToggle').onclick = () => {
-                this.params.fontIdx = (this.params.fontIdx + 1) % 4;
-                this.updateText();
-            };
-
             get('toggleGlobe').onclick = (e) => {
                 this.globe.visible = !this.globe.visible;
-                e.target.innerText = this.globe.visible ? "隱藏玻璃" : "顯示玻璃";
+                e.target.innerText = this.globe.visible ? "隱藏球體" : "顯示球體";
             };
-
             get('loadModelBtn').onclick = () => get('file-input').click();
             get('file-input').onchange = (e) => {
                 const file = e.target.files[0];
-                if (file) this.loadUserModel(URL.createObjectURL(file));
+                if (file) {
+                    document.getElementById('loading').style.display = 'block';
+                    new GLTFLoader().load(URL.createObjectURL(file), (gltf) => {
+                        if (this.model) this.scene.remove(this.model);
+                        this.model = gltf.scene;
+                        const box = new THREE.Box3().setFromObject(this.model);
+                        const size = box.getSize(new THREE.Vector3());
+                        const center = box.getCenter(new THREE.Vector3());
+                        const scale = 1.2 / Math.max(size.x, size.y, size.z);
+                        this.model.scale.setScalar(scale);
+                        this.model.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
+                        this.scene.add(this.model);
+                        document.getElementById('loading').style.display = 'none';
+                    });
+                }
             };
-
             window.addEventListener('resize', () => {
                 this.camera.aspect = window.innerWidth / window.innerHeight;
                 this.camera.updateProjectionMatrix();
@@ -174,90 +196,25 @@
             });
         }
 
-        loadUserModel(url) {
-            if (this.model) this.scene.remove(this.model);
-            document.getElementById('loading').style.display = 'block';
-            this.loader.load(url, (gltf) => {
-                this.model = gltf.scene;
-                const box = new THREE.Box3().setFromObject(this.model);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                const scale = 1.2 / Math.max(size.x, size.y, size.z);
-                this.model.scale.setScalar(scale);
-                this.model.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
-                this.scene.add(this.model);
-                document.getElementById('loading').style.display = 'none';
-            });
-        }
-
-        async updateText() {
-            const style = this.params.fontStyles[this.params.fontIdx];
-            if (!document.fonts.check(style)) await document.fonts.load(style);
-            
-            // 清除舊文字
-            this.charGroups.forEach(g => this.scene.remove(g));
-            this.charGroups = [];
-
-            const text = (document.getElementById('textInput').value || " ").split('');
-            const color = document.getElementById('colorPicker').value;
-
-            text.forEach((char) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 512; canvas.height = 512;
-                const ctx = canvas.getContext('2d');
-                ctx.font = style; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillStyle = color;
-                ctx.fillText(char, 256, 256);
-
-                const tex = new THREE.CanvasTexture(canvas);
-                const group = new THREE.Group();
-
-                // FlipBoard 厚度效果 (10層)
-                for (let j = 0; j < 10; j++) {
-                    const m = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.4, 0.4), // 縮小文字以符合水晶球
-                        new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
-                    );
-                    m.position.z = -j * 0.005;
-                    group.add(m);
-                }
-                this.scene.add(group);
-                this.charGroups.push(group);
-            });
-        }
-
-        _animateText() {
+        _animate() {
+            requestAnimationFrame(() => this._animate());
             const time = (Date.now() / 1000) * this.params.speed;
             const radius = this.params.radius;
-            const totalChars = this.charGroups.length;
-
+            
             this.charGroups.forEach((g, i) => {
-                // 將文字平均分佈在圓周上
-                const angle = (time + (i / totalChars) * Math.PI * 2) % (Math.PI * 2);
-                
-                // 計算圓周座標 (水平環繞水晶球中心)
-                const x = Math.cos(angle) * radius;
-                const z = Math.sin(angle) * radius;
-                const y = 1.6; // 水晶球中心高度
-
-                g.position.set(x, y, z);
-                
-                // 讓文字始終面向球心或背向球心 (調整方向使其可讀)
-                g.lookAt(0, y, 0); 
-                g.rotateY(Math.PI); // 翻轉文字面向外面
+                const angle = (time + (i / this.charGroups.length) * Math.PI * 2) % (Math.PI * 2);
+                g.position.set(Math.cos(angle) * radius, 1.6, Math.sin(angle) * radius);
+                g.lookAt(0, 1.6, 0);
+                g.rotateY(Math.PI); 
             });
-        }
 
-        _renderLoop() {
-            requestAnimationFrame(() => this._renderLoop());
-            this.orbit.update();
-            this._animateText();
-            if (this.model) this.model.rotation.y += 0.005; // 模型自轉
+            if (this.model) this.model.rotation.y += 0.005;
+            this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
     }
 
-    window.onload = () => new CrystalLetteringApp();
+    new CrystalApp();
 </script>
 </body>
 </html>

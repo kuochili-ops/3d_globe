@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball Final</title>
+    <title>3D Crystal Ball | Clockwise Sharing</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Long+Cang&family=ZCOOL+QingKe+HuangYou&family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
     <style>
         body { margin: 0; background: #050505; overflow: hidden; font-family: sans-serif; height: 100vh; }
@@ -11,7 +11,7 @@
         
         #app-ui { 
             position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
-            background: rgba(10, 10, 10, 0.85); backdrop-filter: blur(20px); 
+            background: rgba(10, 10, 10, 0.9); backdrop-filter: blur(20px); 
             border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); 
         }
         .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -40,7 +40,7 @@
         
         <div class="ui-row">
             <div class="control-group">
-                <label>旋轉速度 (逆時針)</label>
+                <label>旋轉速度 (順時鐘)</label>
                 <input type="range" id="speedSlider" min="0" max="3.0" step="0.1" value="1.2">
             </div>
             <div class="control-group">
@@ -50,8 +50,8 @@
         </div>
 
         <div class="ui-row">
-            <button class="btn" id="uploadBtn" style="flex:1; background:#007aff; border:none;">📂 點此上傳 GLB 檔案</button>
-            <button class="btn" id="resetCam" style="flex:0.4;">🔄 重置視角</button>
+            <button class="btn" id="uploadBtn" style="flex:1; background:#007aff; border:none;">📂 載入 GLB 模型</button>
+            <button class="btn" id="resetCam" style="flex:0.4;">🔄 重置相機</button>
         </div>
     </div>
 </div>
@@ -68,7 +68,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-    class FinalApp {
+    class FinalClockwiseApp {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -90,8 +90,8 @@
             this.controls.enableDamping = true;
             this.controls.target.set(0, 1.6, 0);
 
-            this._setupBaseScene();
-            this._bindUIEvents();
+            this._setupScene();
+            this._bindUI();
 
             new RGBELoader().load('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr', (tex) => {
                 tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -103,8 +103,8 @@
             this._animate();
         }
 
-        _setupBaseScene() {
-            // 水晶球玻璃 (優化層級)
+        _setupScene() {
+            // 水晶球玻璃 - depthWrite: false 是關鍵
             const globeGeo = new THREE.SphereGeometry(1.5, 64, 64);
             const globeMat = new THREE.MeshPhysicalMaterial({ 
                 transmission: 1.0, thickness: 0.1, ior: 1.3, 
@@ -112,7 +112,7 @@
             });
             this.globe = new THREE.Mesh(globeGeo, globeMat);
             this.globe.position.y = 1.6;
-            this.globe.renderOrder = 100; // 確保在最後渲染，不會遮擋內部
+            this.globe.renderOrder = 100; // 確保在文字之後才完成渲染
             this.scene.add(this.globe);
 
             // 底座
@@ -156,7 +156,7 @@
             });
         }
 
-        _bindUIEvents() {
+        _bindUI() {
             const get = (id) => document.getElementById(id);
             get('textInput').oninput = () => this.updateText();
             get('colorPicker').oninput = () => this.updateText();
@@ -169,40 +169,33 @@
                 this.controls.update();
             };
 
-            // 🛠️ 檔案上傳連結邏輯
             const fileInput = get('real-file-input');
             get('uploadBtn').onclick = () => fileInput.click();
             fileInput.onchange = (e) => {
                 const file = e.target.files[0];
-                if (file) this._loadGLB(URL.createObjectURL(file));
+                if (file) {
+                    const url = URL.createObjectURL(file);
+                    document.getElementById('loading-msg').style.display = 'block';
+                    new GLTFLoader().load(url, (gltf) => {
+                        if (this.userModel) this.scene.remove(this.userModel);
+                        this.userModel = gltf.scene;
+                        const box = new THREE.Box3().setFromObject(this.userModel);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3());
+                        const scale = 1.2 / Math.max(size.x, size.y, size.z);
+                        this.userModel.scale.setScalar(scale);
+                        this.userModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
+                        this.scene.add(this.userModel);
+                        document.getElementById('loading-msg').style.display = 'none';
+                    });
+                }
             };
-        }
-
-        _loadGLB(url) {
-            const loader = new GLTFLoader();
-            const loadingMsg = document.getElementById('loading-msg');
-            loadingMsg.style.display = 'block';
-
-            loader.load(url, (gltf) => {
-                if (this.userModel) this.scene.remove(this.userModel);
-                this.userModel = gltf.scene;
-                
-                const box = new THREE.Box3().setFromObject(this.userModel);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                const scale = 1.2 / Math.max(size.x, size.y, size.z);
-                
-                this.userModel.scale.setScalar(scale);
-                this.userModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
-                this.userModel.renderOrder = 1; // 模型最先渲染
-                this.scene.add(this.userModel);
-                loadingMsg.style.display = 'none';
-            });
         }
 
         _animate() {
             requestAnimationFrame(() => this._animate());
-            const time = -(Date.now() / 1000) * this.params.speed; // 💡 負號實現逆時針
+            // 💡 移除負號，恢復為順時鐘旋轉
+            const time = (Date.now() / 1000) * this.params.speed; 
             const radius = this.params.radius;
 
             this.charGroups.forEach((g, i) => {
@@ -217,7 +210,7 @@
             this.renderer.render(this.scene, this.camera);
         }
     }
-    new FinalApp();
+    new FinalClockwiseApp();
 </script>
 </body>
 </html>

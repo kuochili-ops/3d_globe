@@ -3,39 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball | Counter-Clockwise</title>
+    <title>3D Crystal Ball Final</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Long+Cang&family=ZCOOL+QingKe+HuangYou&family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; }
+        body { margin: 0; background: #050505; overflow: hidden; font-family: sans-serif; height: 100vh; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
+        
         #app-ui { 
             position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
-            background: rgba(0,0,0,0.85); backdrop-filter: blur(20px); 
+            background: rgba(10, 10, 10, 0.85); backdrop-filter: blur(20px); 
             border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); 
         }
         .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .ui-row { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         .control-group { flex: 1; display: flex; flex-direction: column; }
         label { color: #00ffff; font-size: 10px; font-weight: bold; margin-bottom: 4px; }
+        
         input[type="range"] { width: 100%; accent-color: #00ffff; }
-        input[type="text"] { background: #111; border: 1px solid #0ff; color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; }
+        input[type="text"] { background: #000; border: 1px solid #0ff; color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; }
         .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; }
+        #loading-msg { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: #00ffff; z-index: 50; display: none; font-weight: bold; }
     </style>
 </head>
 <body>
 
+<div id="loading-msg">模型載入中...</div>
 <div id="canvas-container"></div>
 
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
-            <input type="text" id="textInput" value="逆時針轉動文字">
+            <input type="text" id="textInput" value="HELLO WORLD">
             <input type="color" id="colorPicker" value="#00ffff" style="width:45px; height:45px; border:none; background:none;">
             <button class="btn" id="fontToggle">字體</button>
         </div>
+        
         <div class="ui-row">
             <div class="control-group">
-                <label>旋轉速度 SPEED</label>
+                <label>旋轉速度 (逆時針)</label>
                 <input type="range" id="speedSlider" min="0" max="3.0" step="0.1" value="1.2">
             </div>
             <div class="control-group">
@@ -43,12 +48,15 @@
                 <input type="range" id="radiusSlider" min="0.5" max="1.45" step="0.01" value="1.35">
             </div>
         </div>
+
         <div class="ui-row">
-            <button class="btn" id="loadBtn" style="flex:1; background:#007aff;">📂 載入模型</button>
-            <button class="btn" id="resetCam" style="flex:0.5;">🔄 重置相機</button>
+            <button class="btn" id="uploadBtn" style="flex:1; background:#007aff; border:none;">📂 點此上傳 GLB 檔案</button>
+            <button class="btn" id="resetCam" style="flex:0.4;">🔄 重置視角</button>
         </div>
     </div>
 </div>
+
+<input type="file" id="real-file-input" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -60,30 +68,31 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-    class FixApp {
+    class FinalApp {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             this.params = { speed: 1.2, radius: 1.35, fontIdx: 0, fontStyles: ['900 400px "Noto Serif TC"', '400 400px "Long Cang"', '400 400px "ZCOOL QingKe HuangYou"', '900 400px "Noto Sans TC"'] };
             this.charGroups = [];
+            this.userModel = null;
             this.init();
         }
 
         async init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             document.getElementById('canvas-container').appendChild(this.renderer.domElement);
 
             this.camera.position.set(0, 3, 6);
             this.controls = new OrbitControls(this.camera, this.renderer.domElement);
             this.controls.enableDamping = true;
+            this.controls.target.set(0, 1.6, 0);
 
-            // 1. 先建立物體，設定渲染優先順序
-            this._setupObjects();
-            this._bindUI();
+            this._setupBaseScene();
+            this._bindUIEvents();
 
-            // 2. 環境光
             new RGBELoader().load('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr', (tex) => {
                 tex.mapping = THREE.EquirectangularReflectionMapping;
                 this.scene.environment = tex;
@@ -94,17 +103,16 @@
             this._animate();
         }
 
-        _setupObjects() {
-            // 水晶球玻璃 - 設定最高的渲染序，但材質開啟透明混合
+        _setupBaseScene() {
+            // 水晶球玻璃 (優化層級)
             const globeGeo = new THREE.SphereGeometry(1.5, 64, 64);
             const globeMat = new THREE.MeshPhysicalMaterial({ 
                 transmission: 1.0, thickness: 0.1, ior: 1.3, 
-                transparent: true, opacity: 0.2, color: 0xffffff,
-                depthWrite: false // 重要：防止遮擋內部物體
+                transparent: true, opacity: 0.2, depthWrite: false 
             });
             this.globe = new THREE.Mesh(globeGeo, globeMat);
             this.globe.position.y = 1.6;
-            this.globe.renderOrder = 10; // 玻璃後畫
+            this.globe.renderOrder = 100; // 確保在最後渲染，不會遮擋內部
             this.scene.add(this.globe);
 
             // 底座
@@ -142,32 +150,59 @@
                     m.position.z = -j * 0.008;
                     group.add(m);
                 }
-                group.renderOrder = 5; // 文字先畫，就不會被玻璃遮擋
+                group.renderOrder = 50; 
                 this.scene.add(group);
                 this.charGroups.push(group);
             });
         }
 
-        _bindUI() {
+        _bindUIEvents() {
             const get = (id) => document.getElementById(id);
             get('textInput').oninput = () => this.updateText();
             get('colorPicker').oninput = () => this.updateText();
             get('fontToggle').onclick = () => { this.params.fontIdx = (this.params.fontIdx+1)%4; this.updateText(); };
             get('speedSlider').oninput = (e) => this.params.speed = parseFloat(e.target.value);
             get('radiusSlider').oninput = (e) => this.params.radius = parseFloat(e.target.value);
-            
-            // 重置相機功能：將視角恢復到初始位置，並對準水晶球中心
             get('resetCam').onclick = () => {
-                this.controls.reset();
                 this.camera.position.set(0, 3, 6);
-                this.controls.target.set(0, 1.6, 0); // 對準球心
+                this.controls.target.set(0, 1.6, 0);
+                this.controls.update();
             };
+
+            // 🛠️ 檔案上傳連結邏輯
+            const fileInput = get('real-file-input');
+            get('uploadBtn').onclick = () => fileInput.click();
+            fileInput.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) this._loadGLB(URL.createObjectURL(file));
+            };
+        }
+
+        _loadGLB(url) {
+            const loader = new GLTFLoader();
+            const loadingMsg = document.getElementById('loading-msg');
+            loadingMsg.style.display = 'block';
+
+            loader.load(url, (gltf) => {
+                if (this.userModel) this.scene.remove(this.userModel);
+                this.userModel = gltf.scene;
+                
+                const box = new THREE.Box3().setFromObject(this.userModel);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const scale = 1.2 / Math.max(size.x, size.y, size.z);
+                
+                this.userModel.scale.setScalar(scale);
+                this.userModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
+                this.userModel.renderOrder = 1; // 模型最先渲染
+                this.scene.add(this.userModel);
+                loadingMsg.style.display = 'none';
+            });
         }
 
         _animate() {
             requestAnimationFrame(() => this._animate());
-            // 💡 逆時針轉動：將 time 取負值
-            const time = -(Date.now() / 1000) * this.params.speed; 
+            const time = -(Date.now() / 1000) * this.params.speed; // 💡 負號實現逆時針
             const radius = this.params.radius;
 
             this.charGroups.forEach((g, i) => {
@@ -177,11 +212,12 @@
                 g.rotateY(Math.PI);
             });
 
+            if (this.userModel) this.userModel.rotation.y += 0.005;
             this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
     }
-    new FixApp();
+    new FinalApp();
 </script>
 </body>
 </html>

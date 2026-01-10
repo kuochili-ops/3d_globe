@@ -3,22 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Duck Globe Fixed</title>
+    <title>3D Duck Globe Pro Custom</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
         #app-ui { 
             position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
-            background: rgba(15, 15, 15, 0.9); padding: 15px 0 env(safe-area-inset-bottom);
+            background: rgba(15, 15, 15, 0.95); padding: 10px 0 env(safe-area-inset-bottom);
             display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
         }
         #app-ui.viewer-mode { display: none !important; }
-        .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
-        .ui-row { display: flex; width: 100%; gap: 8px; align-items: center; }
-        select, input[type="text"] { background: #000; border: 1.5px solid #00ffff; color: #fff; padding: 10px; border-radius: 8px; font-size: 14px; flex: 1; }
-        input[type="color"] { width: 45px; height: 40px; background: none; border: 1.5px solid #00ffff; border-radius: 8px; }
-        .btn { padding: 12px; border-radius: 8px; font-weight: bold; border: none; cursor: pointer; font-size: 14px; }
-        .share-btn { background: #3b82f6; color: white; flex: 2; }
+        .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
+        .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
+        
+        select, input[type="text"], input[type="range"] { 
+            background: #111; border: 1px solid #00ffff; color: #fff; padding: 8px; border-radius: 6px; font-size: 13px; outline: none;
+        }
+        input[type="text"] { flex: 2; }
+        select { flex: 1; }
+        .label { color: #00ffff; font-size: 11px; min-width: 40px; font-weight: bold; }
+        input[type="range"] { flex: 1; height: 4px; accent-color: #00ffff; }
+        
+        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; background: #3b82f6; color: white; margin-top: 4px; }
     </style>
 </head>
 <body>
@@ -27,15 +34,22 @@
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
-            <select id="modelSelect">
-                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb">經典小鴨</option>
+            <input type="text" id="textInput" value="妳好我吃一口" placeholder="輸入文字...">
+            <input type="color" id="colorPicker" value="#00ffff" style="width:40px; height:35px;">
+            <select id="fontSelect">
+                <option value='bold 160px "Microsoft JhengHei"'>正黑體</option>
+                <option value='bold 160px "serif"'>明體</option>
+                <option value='900 160px "Arial"'>Arial</option>
+                <option value='italic bold 160px "Courier New"'>手寫風</option>
             </select>
-            <input type="color" id="colorPicker" value="#00ffff">
-            <input type="text" id="textInput" value="HELLO DUCK">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結</button>
+            <span class="label">速度</span>
+            <input type="range" id="speedRange" min="0" max="100" value="50">
+            <span class="label">高度</span>
+            <input type="range" id="heightRange" min="50" max="250" value="160">
         </div>
+        <button class="btn" id="shareBtn">🔗 分享驚喜禮物連結</button>
     </div>
 </div>
 
@@ -51,7 +65,10 @@
     let scene, camera, renderer, controls, snowSystem, duck;
     let charGroups = [], snowVelocities = [];
     let isMoving = false, moveTimer = 0;
-    const globeY = 1.6, globeRadius = 1.45;
+    let textRotation = 0;
+    
+    const globeY = 1.6;
+    const globeLimit = 1.42;
 
     function init() {
         scene = new THREE.Scene();
@@ -65,16 +82,16 @@
         controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, globeY, 0);
         controls.enableDamping = true;
-        controls.addEventListener('change', () => { isMoving = true; moveTimer = 30; });
+        controls.addEventListener('change', () => { isMoving = true; moveTimer = 25; });
 
-        scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+        scene.add(new THREE.AmbientLight(0xffffff, 2));
         const sun = new THREE.DirectionalLight(0xffffff, 1);
         sun.position.set(5, 10, 5);
         scene.add(sun);
 
-        // 水晶球
+        // 透明球體
         const globe = new THREE.Mesh(
-            new THREE.SphereGeometry(1.5, 32, 32),
+            new THREE.SphereGeometry(1.5, 48, 48),
             new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15 })
         );
         globe.position.y = globeY;
@@ -99,14 +116,21 @@
     function updateText() {
         const textStr = document.getElementById('textInput').value || " ";
         const color = document.getElementById('colorPicker').value;
+        const fontStyle = document.getElementById('fontSelect').value;
+        
         charGroups.forEach(g => scene.remove(g));
         charGroups = [];
-        textStr.split('').forEach((char, i) => {
+
+        const chars = Array.from(textStr); 
+        chars.forEach((char) => {
             const canvas = document.createElement('canvas');
-            canvas.width = 128; canvas.height = 128;
+            canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = color; ctx.font = 'bold 90px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(char, 64, 64);
+            ctx.fillStyle = color;
+            ctx.font = fontStyle;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(char, 128, 128);
+
             const tex = new THREE.CanvasTexture(canvas);
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: false });
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
@@ -118,57 +142,73 @@
     function loadDuck() {
         new GLTFLoader().load('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb', (gltf) => {
             duck = gltf.scene;
-            duck.scale.setScalar(0.8);
-            duck.position.y = 1.1;
+            duck.scale.setScalar(0.85);
+            duck.position.y = 1.05;
             scene.add(duck);
         });
     }
 
     function animate() {
         requestAnimationFrame(animate);
+        
+        // 雪花物理
         const pos = snowSystem.geometry.attributes.position.array;
         for (let i = 0; i < 800; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
             if (isMoving && Math.random() > 0.9) {
-                snowVelocities[i].add(new THREE.Vector3((Math.random()-0.5)*0.01, Math.random()*0.02, (Math.random()-0.5)*0.01));
+                snowVelocities[i].add(new THREE.Vector3((Math.random()-0.5)*0.012, Math.random()*0.02, (Math.random()-0.5)*0.012));
             }
             pos[ix] += snowVelocities[i].x; pos[iy] += snowVelocities[i].y; pos[iz] += snowVelocities[i].z;
-            snowVelocities[i].y -= 0.0008; // 重力
-            snowVelocities[i].multiplyScalar(0.98); // 阻力
+            snowVelocities[i].y -= 0.0007; snowVelocities[i].multiplyScalar(0.98);
             
-            // 球體邊界硬性修正
             const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            if (dist > globeRadius) {
-                const ratio = globeRadius / dist;
+            if (dist > globeLimit) {
+                const ratio = globeLimit / dist;
                 pos[ix] *= ratio; pos[iy] = globeY + (dy * ratio); pos[iz] *= ratio;
-                snowVelocities[i].multiplyScalar(-0.2); // 反向微彈
+                snowVelocities[i].multiplyScalar(-0.1);
             }
-            if (pos[iy] < 0.3) { pos[iy] = 0.3; snowVelocities[i].set(0,0,0); }
+            if (pos[iy] < 0.28) { pos[iy] = 0.28; snowVelocities[i].set(0,0,0); }
         }
         snowSystem.geometry.attributes.position.needsUpdate = true;
         if (moveTimer > 0) moveTimer--; else isMoving = false;
 
-        const time = Date.now() * 0.001;
+        // 文字運動與位置恢復
+        const speed = document.getElementById('speedRange').value / 2500;
+        const targetY = document.getElementById('heightRange').value / 100;
+        textRotation += speed;
+
         charGroups.forEach((g, i) => {
-            const angle = time - (i / charGroups.length) * Math.PI * 2;
-            g.position.set(Math.cos(angle)*1.43, globeY, Math.sin(angle)*1.43);
-            g.lookAt(0, globeY, 0); g.rotateY(Math.PI);
+            const angle = textRotation - (i / charGroups.length) * Math.PI * 2;
+            g.position.set(Math.cos(angle)*1.43, targetY, Math.sin(angle)*1.43);
+            g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
         });
-        if (duck) duck.rotation.y += 0.005;
+
+        if (duck) duck.rotation.y += 0.004;
         controls.update();
         renderer.render(scene, camera);
     }
 
+    // 事件監聽全恢復
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
+    document.getElementById('fontSelect').onchange = updateText;
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
-        window.prompt("連結已複製:", `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&view=1`);
+        const s = document.getElementById('speedRange').value;
+        const h = document.getElementById('heightRange').value;
+        window.prompt("分享連結:", `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&view=1`);
     };
 
-    if (new URLSearchParams(window.location.search).get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
+    // 處理 URL 參數恢復設定
+    const p = new URLSearchParams(window.location.search);
+    if (p.has('t')) document.getElementById('textInput').value = decodeURIComponent(p.get('t'));
+    if (p.has('c')) document.getElementById('colorPicker').value = '#' + p.get('c');
+    if (p.has('s')) document.getElementById('speedRange').value = p.get('s');
+    if (p.has('h')) document.getElementById('heightRange').value = p.get('h');
+    if (p.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
+
     init();
 </script>
 </body>

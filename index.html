@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Final Fix</title>
+    <title>3D Globe | Cloud & Local</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         
+        /* 載入遮罩 */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 2000;
@@ -17,6 +18,7 @@
         .loader-bar { width: 220px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
         #loader-progress { width: 0%; height: 100%; background: #00ffff; transition: width 0.2s; }
 
+        /* UI 配置 */
         #app-ui { 
             position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
             background: rgba(10, 10, 10, 0.9); padding: 12px 0 env(safe-area-inset-bottom);
@@ -25,29 +27,32 @@
         #app-ui.viewer-mode { display: none !important; }
         .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
         .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
+        
         input, select, button { 
             background: #000; border: 1px solid #00ffff; color: #fff; padding: 10px; border-radius: 6px; font-size: 13px; outline: none;
         }
         select, input[type="text"] { flex: 1; }
         .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; }
-        .btn { font-weight: bold; border: none; cursor: pointer; color: white; }
+        .btn { font-weight: bold; border: none; cursor: pointer; color: white; transition: 0.2s; }
+        .btn:active { transform: scale(0.95); opacity: 0.8; }
+        
         .share-btn { background: #3b82f6; flex: 1.5; }
+        .upload-btn { background: #6366f1; flex: 1; border: 1px solid #818cf8; }
         .mode-btn { background: #10b981; min-width: 90px; }
     </style>
 </head>
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">同步資料中...</div>
+    <div id="loading-text">讀取中...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
-    <div style="font-size: 10px; margin-top: 10px; opacity: 0.6;">(大檔案可能需要 10-20 秒)</div>
 </div>
 
 <div id="canvas-container"></div>
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
-            <select id="modelSelect"><option value="">-- 選取景點 --</option></select>
+            <select id="modelSelect"><option value="">-- 雲端景點 --</option></select>
             <button class="btn mode-btn" id="toggleAutoBtn">🔄 輪播 OFF</button>
         </div>
         <div class="ui-row">
@@ -61,10 +66,13 @@
             <input type="range" id="speedRange" min="0" max="100" value="50" style="flex:2;">
         </div>
         <div class="ui-row">
+            <button class="btn upload-btn" id="uploadBtn">📂 自行上傳 GLB</button>
             <button class="btn share-btn" id="shareBtn">🔗 複製分享連結</button>
         </div>
     </div>
 </div>
+
+<input type="file" id="fileInput" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -88,7 +96,7 @@
     if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
 
     async function init() {
-        // --- Scene Setup ---
+        // 場景基礎設定
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 3, 6);
@@ -108,29 +116,13 @@
         sun.position.set(5, 10, 5);
         scene.add(sun);
 
-        // --- Globe ---
-        const globe = new THREE.Mesh(
-            new THREE.SphereGeometry(1.5, 32, 32),
-            new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15, depthWrite: false })
-        );
-        globe.position.y = globeY;
-        scene.add(globe);
+        // 水晶球與雪花
+        setupGlobeAndSnow();
 
-        // --- Snow ---
-        const posArr = [];
-        for (let i = 0; i < 600; i++) {
-            posArr.push((Math.random()-0.5)*2.5, 0.5 + Math.random()*2, (Math.random()-0.5)*2.5);
-            snowVelocities.push(new THREE.Vector3(0, -0.005 - Math.random()*0.01, 0));
-        }
-        const snowGeo = new THREE.BufferGeometry();
-        snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
-        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.8 }));
-        scene.add(snowSystem);
-
-        // --- UI & Logic ---
+        // 雲端目錄同步
         await fetchGithubModels();
         
-        // Restore params
+        // 恢復參數
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         
@@ -141,13 +133,31 @@
             loadModel(decodeURIComponent(mParam));
             document.getElementById('modelSelect').value = decodeURIComponent(mParam);
         } else {
-            // Default model if available
             const defaultM = document.getElementById('modelSelect').options[1]?.value;
             if(defaultM) loadModel(defaultM);
         }
 
         window.addEventListener('resize', onWindowResize);
         animate();
+    }
+
+    function setupGlobeAndSnow() {
+        const globe = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 32, 32),
+            new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15, depthWrite: false })
+        );
+        globe.position.y = globeY;
+        scene.add(globe);
+
+        const posArr = [];
+        for (let i = 0; i < 600; i++) {
+            posArr.push((Math.random()-0.5)*2.5, 0.5 + Math.random()*2, (Math.random()-0.5)*2.5);
+            snowVelocities.push(new THREE.Vector3(0, -0.005 - Math.random()*0.01, 0));
+        }
+        const snowGeo = new THREE.BufferGeometry();
+        snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.8 }));
+        scene.add(snowSystem);
     }
 
     async function fetchGithubModels() {
@@ -159,27 +169,30 @@
             files.forEach(f => {
                 if (f.name.toLowerCase().endsWith('.glb')) {
                     const opt = document.createElement('option');
-                    // 強制轉為 raw 連結確保穩定
                     const rawUrl = `https://raw.githubusercontent.com/${githubUser}/${githubRepo}/main/${modelFolderPath}/${f.name}`;
                     opt.value = rawUrl;
-                    opt.innerText = f.name.replace('.glb', '');
+                    opt.innerText = "☁️ " + f.name.replace('.glb', '');
                     select.appendChild(opt);
                 }
             });
-        } catch (e) { console.error("GitHub API limit or Error"); }
+        } catch (e) { console.error("GitHub API Limit"); }
     }
 
-    function loadModel(url) {
+    function loadModel(url, isLocal = false) {
         if (!url) return;
         const overlay = document.getElementById('loading-overlay');
         const progress = document.getElementById('loader-progress');
+        const text = document.getElementById('loading-text');
+        
         overlay.style.display = 'flex';
         progress.style.width = '0%';
+        text.innerText = isLocal ? "正在解析本地模型..." : "從雲端下載中...";
 
         new GLTFLoader().load(url, (gltf) => {
             if (currentModel) scene.remove(currentModel);
+            if (mixer) mixer = null;
+
             currentModel = gltf.scene;
-            
             const box = new THREE.Box3().setFromObject(currentModel);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
@@ -198,13 +211,24 @@
         }, (xhr) => {
             if (xhr.lengthComputable) {
                 progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
+                text.innerText = `下載進度: ${Math.round(xhr.loaded / xhr.total * 100)}%`;
             }
         }, (err) => {
-            console.error(err);
             overlay.style.display = 'none';
-            alert("模型載入失敗，請檢查網路或檔案連結。");
+            alert("載入失敗！可能是檔案損毀或格式不支援。");
         });
     }
+
+    // --- 自行上傳功能核心 ---
+    document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
+    document.getElementById('fileInput').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const url = URL.createObjectURL(file);
+            loadModel(url, true); // 標記為本地上傳
+            document.getElementById('modelSelect').value = ""; // 重設選單
+        }
+    };
 
     function updateText() {
         const textStr = document.getElementById('textInput').value || " ";
@@ -231,28 +255,24 @@
         const delta = clock.getDelta();
         if (mixer) mixer.update(delta);
 
-        // 雪花邏輯修復
+        // 雪花動作核心
         const pos = snowSystem.geometry.attributes.position.array;
         for (let i = 0; i < 600; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
-            
-            // 基礎下落
             pos[ix] += snowVelocities[i].x;
             pos[iy] += snowVelocities[i].y;
             pos[iz] += snowVelocities[i].z;
 
-            // 互動時擾動
             if (isInteracting) {
                 snowVelocities[i].x += (Math.random()-0.5)*0.01;
                 snowVelocities[i].y += Math.random()*0.02;
                 snowVelocities[i].z += (Math.random()-0.5)*0.01;
             } else {
-                snowVelocities[i].y -= 0.0005; // 重力
-                snowVelocities[i].multiplyScalar(0.95); // 阻力
+                snowVelocities[i].y -= 0.0005;
+                snowVelocities[i].multiplyScalar(0.95);
                 if(snowVelocities[i].y > -0.005) snowVelocities[i].y = -0.005; 
             }
 
-            // 碰撞檢測
             const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
             if (dist > 1.45) {
@@ -260,15 +280,11 @@
                 pos[ix] *= ratio; pos[iy] = globeY + (dy * ratio); pos[iz] *= ratio;
                 snowVelocities[i].multiplyScalar(-0.2);
             }
-            if (pos[iy] < 0.25) { 
-                pos[iy] = 0.25; 
-                if(!isInteracting) snowVelocities[i].set(0,0,0);
-            }
+            if (pos[iy] < 0.25) { pos[iy] = 0.25; if(!isInteracting) snowVelocities[i].set(0,0,0); }
         }
         snowSystem.geometry.attributes.position.needsUpdate = true;
         if (interactTimer > 0) interactTimer--; else isInteracting = false;
 
-        // 文字旋轉
         const speed = document.getElementById('speedRange').value / 2500;
         const targetY = document.getElementById('heightRange').value / 100;
         textRotation += speed;

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | High Contrast Edition</title>
+    <title>3D Globe | Clean Visuals</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -12,7 +12,7 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 2000;
             display: none; flex-direction: column; justify-content: center; align-items: center;
-            color: #00ffff; font-family: monospace; text-align: center;
+            color: #00ffff; font-family: monospace;
         }
         .loader-bar { width: 220px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
         #loader-progress { width: 0%; height: 100%; background: #00ffff; transition: width 0.2s; }
@@ -45,13 +45,12 @@
         .share-btn { background: #3b82f6; flex: 1.5; }
         .upload-btn { background: #6366f1; flex: 1; border: 1px solid #818cf8; }
         .mode-btn { background: #10b981; min-width: 90px; }
-        .mode-btn.active { background: #ef4444; }
     </style>
 </head>
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">正在強化模型立體感...</div>
+    <div id="loading-text">載入中...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -75,7 +74,7 @@
             <input type="range" id="speedRange" min="0" max="100" value="50" style="flex:2;">
         </div>
         <div class="ui-row">
-            <button class="btn upload-btn" id="uploadBtn">📂 上傳 101 或模型</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 自行上傳</button>
             <button class="btn share-btn" id="shareBtn">🔗 分享連結</button>
         </div>
     </div>
@@ -100,7 +99,6 @@
     let charGroups = [], snowVelocities = [], clock = new THREE.Clock();
     let textRotation = 0, isInteracting = false, interactTimer = 0;
     const globeY = 1.6, targetModelSize = 2.4;
-
     let modelPlaylist = [], currentIdx = 0, isAutoMode = false, autoTimer = null;
 
     async function init() {
@@ -140,24 +138,16 @@
         controls.enableDamping = true;
         controls.addEventListener('start', () => { isInteracting = true; interactTimer = 30; });
 
-        // --- 視覺強化照明組合 ---
-        // 1. 低強度環境光（保留基礎細節但不沖淡陰影）
-        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+        // --- 純淨照明系統：移除粉紅色，改用多向強白光 ---
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2)); // 基礎亮度
 
-        // 2. 主光（從側上方打下，製造深邃陰影）
-        const sun = new THREE.DirectionalLight(0xffffff, 2.5);
-        sun.position.set(5, 10, 7);
+        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+        sun.position.set(5, 10, 5); // 右上強光
         scene.add(sun);
 
-        // 3. 補光（帶點青綠色，增加科技感與邊緣立體感）
-        const fill = new THREE.PointLight(0x00ffff, 1.5);
-        fill.position.set(-5, 5, 2);
+        const fill = new THREE.DirectionalLight(0xffffff, 1.0);
+        fill.position.set(-5, 2, 2); // 左側補光，帶出側邊結構
         scene.add(fill);
-
-        // 4. 背光（紫色，把模型從背景「推」出來）
-        const back = new THREE.DirectionalLight(0xff00ff, 1.0);
-        back.position.set(0, 5, -10);
-        scene.add(back);
     }
 
     function setupGlobeAndSnow() {
@@ -189,17 +179,14 @@
             if (currentModel) scene.remove(currentModel);
             currentModel = gltf.scene;
 
-            // --- 解決白色檔案問題：強制注入材質細節 ---
+            // --- 修復白色問題：僅使用灰色底色 + 物理光澤 ---
             currentModel.traverse((node) => {
                 if (node.isMesh) {
                     node.material = new THREE.MeshStandardMaterial({
-                        color: 0xaaaaaa,      // 改用中灰色，讓陰影更容易呈現
-                        metalness: 0.5,       // 增加一點點金屬反射
-                        roughness: 0.3,       // 不要太粗糙，保留光澤感
-                        name: 'EnhancedMaterial'
+                        color: 0x999999,      // 中灰色底，完美顯現白光產生的陰影
+                        metalness: 0.2,       // 稍微一點反射
+                        roughness: 0.6,       // 讓建築表面質地更紮實
                     });
-                    node.castShadow = true;
-                    node.receiveShadow = true;
                 }
             });
 
@@ -235,10 +222,9 @@
                 opt.value = m.url; opt.innerText = "☁️ " + m.name;
                 select.appendChild(opt);
             });
-        } catch (e) { console.error("GitHub API Limit"); }
+        } catch (e) { console.error("API Limit"); }
     }
 
-    // --- 輪播與 UI 切換 ---
     document.getElementById('toggle-panel-btn').onclick = function() {
         const ui = document.getElementById('app-ui');
         ui.classList.toggle('collapsed');
@@ -249,15 +235,13 @@
         if (isAutoMode) {
             isAutoMode = false; clearInterval(autoTimer);
             document.getElementById('toggleAutoBtn').innerText = "🔄 輪播 OFF";
-            document.getElementById('toggleAutoBtn').classList.remove('active');
         } else {
             isAutoMode = true;
             document.getElementById('toggleAutoBtn').innerText = "⏹ 輪播 ON";
-            document.getElementById('toggleAutoBtn').classList.add('active');
             autoTimer = setInterval(() => {
                 currentIdx = (currentIdx + 1) % modelPlaylist.length;
                 loadModel(modelPlaylist[currentIdx].url);
-            }, 10000);
+            }, 60000);
         }
     };
 
@@ -340,7 +324,7 @@
         const c = document.getElementById('colorPicker').value.replace('#','');
         const m = encodeURIComponent(document.getElementById('modelSelect').value);
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 分享連結已複製！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製！"));
     };
 
     init();

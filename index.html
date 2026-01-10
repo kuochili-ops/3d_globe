@@ -3,25 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Globe | Pure View</title>
+    <title>3D Globe | GitHub Sync</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        
-        /* 操作介面 */
         #app-ui { 
             position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
             background: rgba(10, 10, 10, 0.9); padding: 12px 0 env(safe-area-inset-bottom);
             display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
         }
-        
-        /* 純觀看目的：徹底移除介面 */
         #app-ui.viewer-mode { display: none !important; }
-
         .ui-content { width: 94%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
         .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
         select, input[type="text"], input[type="range"] { 
-            background: #000; border: 1px solid #00ffff; color: #fff; padding: 8px; border-radius: 6px; font-size: 13px;
+            background: #000; border: 1px solid #00ffff; color: #fff; padding: 8px; border-radius: 6px; font-size: 13px; outline: none;
         }
         input[type="text"] { flex: 2; }
         .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; }
@@ -29,17 +24,20 @@
         .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
         .share-btn { background: #3b82f6; flex: 2; }
         .upload-btn { background: #444; flex: 1; }
+        ::placeholder { color: #555; }
     </style>
 </head>
 <body>
 
 <div id="canvas-container"></div>
-
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
             <input type="text" id="textInput" value="妳好我吃一口">
             <input type="color" id="colorPicker" value="#00ffff" style="width:40px; height:35px;">
+        </div>
+        <div class="ui-row">
+            <input type="text" id="modelUrlInput" placeholder="輸入 GitHub 上的模型檔名 (如: 101.glb)">
             <select id="fontSelect">
                 <option value='bold 160px "Microsoft JhengHei"'>正黑體</option>
                 <option value='900 160px "Arial"'>Arial</option>
@@ -52,8 +50,8 @@
             <input type="range" id="heightRange" min="50" max="280" value="160">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 複製純觀看連結</button>
-            <button class="btn upload-btn" id="uploadBtn">📂 上傳模型</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結 (含模型路徑)</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 本地測試</button>
         </div>
     </div>
 </div>
@@ -73,13 +71,10 @@
     let charGroups = [], snowVelocities = [];
     let isMoving = false, moveTimer = 0, textRotation = 0;
     const globeY = 1.6;
-    const globeMaxRadius = 1.48; // 玻璃內壁極限
+    const globeMaxRadius = 1.48;
 
-    // 讀取 URL 參數
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('view') === '1') {
-        document.getElementById('app-ui').classList.add('viewer-mode');
-    }
+    if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
 
     function init() {
         scene = new THREE.Scene();
@@ -105,7 +100,7 @@
             new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15, depthWrite: false })
         );
         globe.position.y = globeY;
-        globe.renderOrder = 10; // 確保玻璃在最外層渲染
+        globe.renderOrder = 10;
         scene.add(globe);
 
         const snowGeo = new THREE.BufferGeometry();
@@ -118,14 +113,21 @@
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
 
-        // 套用參數
+        // 恢復參數
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
         if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
+        
+        // 預設模型：如果有參數就讀參數，沒有就讀小鴨
+        let modelFile = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb';
+        if (urlParams.has('m')) {
+            modelFile = decodeURIComponent(urlParams.get('m'));
+            document.getElementById('modelUrlInput').value = modelFile;
+        }
 
         updateText();
-        loadModel('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb');
+        loadModel(modelFile);
         animate();
     }
 
@@ -162,6 +164,11 @@
             currentModel.scale.setScalar(scale);
             currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
             scene.add(currentModel);
+        }, undefined, (err) => {
+            console.warn("載入失敗，嘗試預設模型");
+            if (url.includes('/') === false && url !== "") { 
+                // 如果輸入的是純檔名且失敗，可能是路徑問題，這裡可以擴充
+            }
         });
     }
 
@@ -185,13 +192,10 @@
         snowSystem.geometry.attributes.position.needsUpdate = true;
         if (moveTimer > 0) moveTimer--; else isMoving = false;
 
-        // 文字旋轉與「球體動態路徑計算」
         const speed = document.getElementById('speedRange').value / 2500;
         const targetY = document.getElementById('heightRange').value / 100;
         textRotation += speed;
-
-        // 核心計算：根據高度(y) 計算圓橫截面半徑 r = sqrt(R^2 - y^2)
-        const relativeY = targetY - globeY; // 相對於球心的垂直距離
+        const relativeY = targetY - globeY; 
         const dynamicRadius = Math.sqrt(Math.max(0, Math.pow(globeMaxRadius, 2) - Math.pow(relativeY, 2))) * 0.96;
 
         charGroups.forEach((g, i) => {
@@ -207,10 +211,17 @@
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
+    
+    // 當檔名輸入框改變時嘗試載入
+    document.getElementById('modelUrlInput').onchange = (e) => loadModel(e.target.value);
+    
     document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
     document.getElementById('real-file').onchange = (e) => {
         const file = e.target.files[0];
-        if (file) loadModel(URL.createObjectURL(file));
+        if (file) {
+            loadModel(URL.createObjectURL(file));
+            document.getElementById('modelUrlInput').value = file.name; // 提示使用者記得上傳這個檔案到 GitHub
+        }
     };
 
     document.getElementById('shareBtn').onclick = () => {
@@ -218,10 +229,11 @@
         const c = document.getElementById('colorPicker').value.replace('#','');
         const s = document.getElementById('speedRange').value;
         const h = document.getElementById('heightRange').value;
-        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&view=1`;
+        const m = encodeURIComponent(document.getElementById('modelUrlInput').value);
+        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=${m}&view=1`;
         
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 純觀看連結已複製！\n對方打開後將不會看到操作介面。");
+            alert("✅ 分享連結已複製！\n記得將 " + (document.getElementById('modelUrlInput').value || "模型檔") + " 上傳到 GitHub 相同目錄下，對方才看得到喔！");
         });
     };
     init();

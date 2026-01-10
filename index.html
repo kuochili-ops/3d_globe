@@ -3,28 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball | Text Fixed</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
+    <title>3D Duck Globe Fix</title>
     <style>
-        :root { --accent: #00ffff; }
-        body { margin: 0; background: #000; overflow: hidden; font-family: "Noto Sans TC", sans-serif; height: 100vh; touch-action: none; }
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         
-        /* 確保管理面板顯示 */
+        /* 介面樣式 - 參考您的截圖微調 */
         #app-ui { 
-            position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
-            background: rgba(20, 20, 20, 0.95); backdrop-filter: blur(20px); 
-            border-top: 1px solid #444; padding: 15px 0 env(safe-area-inset-bottom) 0;
-            display: flex; flex-direction: column; align-items: center;
+            position: absolute !important; bottom: 0 !important; left: 0 !important; width: 100% !important; z-index: 1000 !important; 
+            background: rgba(10, 10, 10, 0.95) !important; padding: 15px 0 env(safe-area-inset-bottom) !important;
+            display: flex !important; flex-direction: column !important; align-items: center !important;
+            border-top: 1px solid #333 !important;
         }
         #app-ui.viewer-mode { display: none !important; }
 
-        .ui-content { padding: 0 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
-        .ui-row { width: 100%; max-width: 450px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-        select, input[type="text"] { background: #111; border: 1.5px solid var(--accent); color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; outline: none; }
-        .btn { padding: 10px; background: #333; border: 1px solid #555; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; font-weight: bold; }
-        .share-btn { background: #007aff !important; border: none !important; flex: 1.5; }
-        input[type="color"] { width: 45px; height: 40px; border: 1.5px solid var(--accent); border-radius: 8px; background: none; }
+        .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
+        .ui-row { display: flex; width: 100%; gap: 8px; align-items: center; }
+        
+        select, input[type="text"] { 
+            background: #000; border: 1.5px solid #00ffff; color: #fff; padding: 12px; border-radius: 8px; 
+            font-size: 14px; outline: none; flex: 1;
+        }
+        input[type="color"] { width: 45px; height: 45px; background: none; border: 1.5px solid #00ffff; border-radius: 8px; cursor: pointer; padding: 2px; }
+        
+        .btn { padding: 12px; border-radius: 8px; font-weight: bold; border: none; cursor: pointer; font-size: 14px; }
+        .share-btn { background: #3b82f6; color: white; flex: 2; }
+        .upload-btn { background: #333; color: white; flex: 1; }
     </style>
 </head>
 <body>
@@ -34,21 +38,20 @@
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
-            <select id="landmarkSelect">
+            <select id="modelSelect">
                 <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb">經典小鴨</option>
-                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb">科幻頭盔</option>
             </select>
             <input type="color" id="colorPicker" value="#00ffff">
-            <input type="text" id="textInput" placeholder="訊息..." value="HELLO DUCK">
+            <input type="text" id="textInput" value="HELLO DUCK" placeholder="輸入文字...">
         </div>
         <div class="ui-row">
             <button class="btn share-btn" id="shareBtn">🔗 分享驚喜禮物 (收訊者無介面)</button>
-            <button class="btn" id="uploadBtn">📂 上傳 GLB</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳 GLB</button>
         </div>
     </div>
 </div>
 
-<input type="file" id="real-file-input" accept=".glb,.gltf" style="display:none;">
+<input type="file" id="real-file" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -59,207 +62,152 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    class SnowGlobeApp {
-        constructor() {
-            this.scene = new THREE.Scene();
-            this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            this.snowCount = 1000;
-            this.snowVelocities = [];
-            this.charGroups = [];
-            this.currentModel = null;
-            this.isMoving = false;
-            this.moveTimer = 0;
-            this.globeY = 1.6;
-            this.init();
+    let scene, camera, renderer, controls, snowSystem;
+    let charGroups = [], snowVelocities = [];
+    let isMoving = false, moveTimer = 0;
+    const globeY = 1.6;
+
+    async function init() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        camera.position.set(0, 3, 6);
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, globeY, 0);
+        controls.addEventListener('change', () => { isMoving = true; moveTimer = 25; });
+
+        // 光源強化
+        scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5, 10, 5);
+        scene.add(sun);
+
+        // 水晶球 - 降低透明度以防遮擋文字
+        const globe = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 32, 32),
+            new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.05, transparent: true, opacity: 0.1 })
+        );
+        globe.position.y = globeY;
+        scene.add(globe);
+
+        // 雪花
+        const snowGeo = new THREE.BufferGeometry();
+        const posArr = [];
+        for (let i = 0; i < 1000; i++) {
+            posArr.push((Math.random()-0.5)*2.2, 0.25, (Math.random()-0.5)*2.2);
+            snowVelocities.push(new THREE.Vector3(0,0,0));
         }
+        snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
+        scene.add(snowSystem);
 
-        async init() {
-            this.renderer.setSize(window.innerWidth, window.innerHeight);
-            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.getElementById('canvas-container').appendChild(this.renderer.domElement);
+        // 初始化文字
+        updateText();
+        
+        // 載入小鴨
+        loadModel(document.getElementById('modelSelect').value);
 
-            this.camera.position.set(0, 3, 6);
-            this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-            this.controls.enableDamping = true;
-            this.controls.target.set(0, this.globeY, 0);
-
-            this.controls.addEventListener('change', () => {
-                this.isMoving = true;
-                this.moveTimer = 25; 
-            });
-
-            this._setupScene();
-            this._setupSnow();
-            this._handleURL();
-            this._bindUI();
-
-            // 核心修正：確保字體就緒後更新，且預設先執行一次
-            this.updateText();
-            document.fonts.ready.then(() => this.updateText());
-
-            this._loadModel(this.modelUrl || "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb");
-            this._animate();
-        }
-
-        _setupScene() {
-            this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-            const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-            sun.position.set(5, 10, 5);
-            this.scene.add(sun);
-
-            // 水晶球
-            const globeGeo = new THREE.SphereGeometry(1.5, 48, 48);
-            const globeMat = new THREE.MeshPhysicalMaterial({ 
-                transmission: 1.0, thickness: 0.2, transparent: true, opacity: 0.2, ior: 1.45 
-            });
-            const globe = new THREE.Mesh(globeGeo, globeMat);
-            globe.position.y = this.globeY;
-            this.scene.add(globe);
-
-            // 底座
-            const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.7, 0.4, 32), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-            base.position.y = 0.2;
-            this.scene.add(base);
-        }
-
-        _setupSnow() {
-            const geo = new THREE.BufferGeometry();
-            const pos = [];
-            for (let i = 0; i < this.snowCount; i++) {
-                pos.push((Math.random()-0.5)*2, 0.25, (Math.random()-0.5)*2);
-                this.snowVelocities.push(new THREE.Vector3(0,0,0));
-            }
-            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-            this.snowSystem = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.8 }));
-            this.scene.add(this.snowSystem);
-        }
-
-        updateText() {
-            const textStr = document.getElementById('textInput').value || " ";
-            const color = document.getElementById('colorPicker').value;
-            
-            // 清除舊文字
-            this.charGroups.forEach(g => this.scene.remove(g));
-            this.charGroups = [];
-
-            const chars = textStr.split('');
-            chars.forEach((char, i) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 256; canvas.height = 256;
-                const ctx = canvas.getContext('2d');
-                
-                // 修正：加強字體渲染
-                ctx.clearRect(0, 0, 256, 256);
-                ctx.fillStyle = color;
-                ctx.font = '900 160px "Noto Sans TC", sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(char, 128, 128);
-
-                const tex = new THREE.CanvasTexture(canvas);
-                tex.needsUpdate = true;
-                
-                const g = new THREE.Group();
-                const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide });
-                const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
-                
-                g.add(mesh);
-                g.renderOrder = 999; // 確保在最前面
-                this.scene.add(g);
-                this.charGroups.push(g);
-            });
-        }
-
-        _loadModel(url) {
-            new GLTFLoader().load(url, (gltf) => {
-                if (this.currentModel) this.scene.remove(this.currentModel);
-                this.currentModel = gltf.scene;
-                const box = new THREE.Box3().setFromObject(this.currentModel);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                const scale = 1.0 / Math.max(size.x, size.y, size.z);
-                this.currentModel.scale.setScalar(scale);
-                this.currentModel.position.set(-center.x*scale, this.globeY - center.y*scale, -center.z*scale);
-                this.scene.add(this.currentModel);
-            });
-        }
-
-        _animate() {
-            requestAnimationFrame(() => this._animate());
-            
-            const posAttr = this.snowSystem.geometry.attributes.position;
-            for (let i = 0; i < this.snowCount; i++) {
-                const ix = i*3, iy = i*3+1, iz = i*3+2;
-                
-                if (this.isMoving && Math.random() > 0.95) {
-                    this.snowVelocities[i].set((Math.random()-0.5)*0.04, Math.random()*0.05, (Math.random()-0.5)*0.04);
-                }
-
-                posAttr.array[ix] += this.snowVelocities[i].x;
-                posAttr.array[iy] += this.snowVelocities[i].y;
-                posAttr.array[iz] += this.snowVelocities[i].z;
-
-                this.snowVelocities[i].y -= 0.0007; // 輕微重力
-                this.snowVelocities[i].multiplyScalar(0.99); 
-
-                // 球體碰撞 (中心 0, 1.6, 半徑 1.48)
-                const dx = posAttr.array[ix], dy = posAttr.array[iy]-this.globeY, dz = posAttr.array[iz];
-                const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                if (d > 1.48) {
-                    this.snowVelocities[i].multiplyScalar(-0.3); // 溫和回彈
-                }
-
-                if (posAttr.array[iy] < 0.25) {
-                    posAttr.array[iy] = 0.25;
-                    this.snowVelocities[i].set(0,0,0);
-                }
-            }
-            posAttr.needsUpdate = true;
-            if (this.moveTimer > 0) this.moveTimer--; else this.isMoving = false;
-
-            // 文字旋轉
-            const time = Date.now() * 0.0015;
-            this.charGroups.forEach((g, i) => {
-                const angle = time - (i / this.charGroups.length) * Math.PI * 2;
-                g.position.set(Math.cos(angle)*1.43, this.globeY, Math.sin(angle)*1.43);
-                g.lookAt(0, this.globeY, 0);
-                g.rotateY(Math.PI);
-            });
-
-            if (this.currentModel) this.currentModel.rotation.y += 0.005;
-            this.controls.update();
-            this.renderer.render(this.scene, this.camera);
-        }
-
-        _handleURL() {
-            const p = new URLSearchParams(window.location.search);
-            if (p.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
-            if (p.has('t')) document.getElementById('textInput').value = decodeURIComponent(p.get('t'));
-            if (p.has('c')) document.getElementById('colorPicker').value = '#' + p.get('c');
-            this.modelUrl = p.has('m') ? decodeURIComponent(p.get('m')) : null;
-        }
-
-        _bindUI() {
-            const get = (id) => document.getElementById(id);
-            get('textInput').oninput = () => this.updateText();
-            get('colorPicker').oninput = () => this.updateText();
-            get('landmarkSelect').onchange = (e) => this._loadModel(e.target.value);
-            get('uploadBtn').onclick = () => get('real-file-input').click();
-            get('real-file-input').onchange = (e) => {
-                const f = e.target.files[0];
-                if(f) this._loadModel(URL.createObjectURL(f));
-            };
-            get('shareBtn').onclick = () => {
-                const t = encodeURIComponent(get('textInput').value);
-                const c = get('colorPicker').value.replace('#','');
-                const m = encodeURIComponent(get('landmarkSelect').value);
-                const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&view=1`;
-                navigator.clipboard.writeText(url).then(() => alert('連結已複製！傳給朋友，他將看不到介面。'));
-            };
-        }
+        animate();
     }
-    new SnowGlobeApp();
+
+    function updateText() {
+        const textStr = document.getElementById('textInput').value || " ";
+        const color = document.getElementById('colorPicker').value;
+
+        charGroups.forEach(g => scene.remove(g));
+        charGroups = [];
+
+        textStr.split('').forEach((char, i) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color;
+            ctx.font = 'bold 90px sans-serif'; // 使用系統字體
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(char, 64, 64);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: false }); // 關鍵：關閉深度測試
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
+            
+            const g = new THREE.Group();
+            g.add(mesh);
+            g.renderOrder = 999; // 確保文字在最後渲染
+            scene.add(g);
+            charGroups.push(g);
+        });
+    }
+
+    function loadModel(url) {
+        new GLTFLoader().load(url, (gltf) => {
+            if (window.currentModel) scene.remove(window.currentModel);
+            window.currentModel = gltf.scene;
+            const box = new THREE.Box3().setFromObject(window.currentModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            const scale = 1.0 / Math.max(size.x, size.y, size.z);
+            window.currentModel.scale.setScalar(scale);
+            window.currentModel.position.set(-center.x*scale, globeY - center.y*scale, -center.z*scale);
+            scene.add(window.currentModel);
+        });
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        
+        const pos = snowSystem.geometry.attributes.position.array;
+        for (let i = 0; i < 1000; i++) {
+            const ix = i*3, iy = i*3+1, iz = i*3+2;
+            if (isMoving && Math.random() > 0.95) {
+                snowVelocities[i].set((Math.random()-0.5)*0.04, Math.random()*0.06, (Math.random()-0.5)*0.04);
+            }
+            pos[ix] += snowVelocities[i].x; pos[iy] += snowVelocities[i].y; pos[iz] += snowVelocities[i].z;
+            snowVelocities[i].y -= 0.0008;
+            if (pos[iy] < 0.25) { pos[iy] = 0.25; snowVelocities[i].set(0,0,0); }
+            const d = Math.sqrt(pos[ix]**2 + (pos[iy]-globeY)**2 + pos[iz]**2);
+            if (d > 1.48) snowVelocities[i].multiplyScalar(-0.4);
+        }
+        snowSystem.geometry.attributes.position.needsUpdate = true;
+        if (moveTimer > 0) moveTimer--; else isMoving = false;
+
+        const time = Date.now() * 0.0012;
+        charGroups.forEach((g, i) => {
+            const angle = time - (i / charGroups.length) * Math.PI * 2;
+            g.position.set(Math.cos(angle)*1.44, globeY, Math.sin(angle)*1.44);
+            g.lookAt(0, globeY, 0); g.rotateY(Math.PI);
+        });
+
+        if (window.currentModel) window.currentModel.rotation.y += 0.005;
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    // 事件監聽
+    document.getElementById('textInput').oninput = updateText;
+    document.getElementById('colorPicker').oninput = updateText;
+    document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
+    document.getElementById('real-file').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) loadModel(URL.createObjectURL(file));
+    };
+    document.getElementById('shareBtn').onclick = () => {
+        const t = encodeURIComponent(document.getElementById('textInput').value);
+        const c = document.getElementById('colorPicker').value.replace('#','');
+        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&view=1`;
+        navigator.clipboard.writeText(url).then(() => alert('連結已複製！傳給朋友即可隱藏介面。'));
+    };
+
+    if (new URLSearchParams(window.location.search).get('view') === '1') {
+        document.getElementById('app-ui').classList.add('viewer-mode');
+    }
+
+    init();
 </script>
 </body>
 </html>

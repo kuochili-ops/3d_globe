@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball | Spherical Motion</title>
+    <title>3D Crystal Ball Complete</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
     <style>
         :root { --accent: #00ffff; }
@@ -12,53 +12,67 @@
         
         #app-ui { 
             position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
-            background: rgba(10, 10, 10, 0.9); backdrop-filter: blur(20px); 
+            background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(20px); 
             border-top: 1px solid #333; transition: transform 0.5s ease;
             padding-bottom: env(safe-area-inset-bottom);
         }
         #app-ui.collapsed { transform: translateY(calc(100% - 40px)); }
 
-        .handle { width: 100%; height: 40px; display: flex; justify-content: center; align-items: center; cursor: pointer; color: var(--accent); font-size: 12px; letter-spacing: 2px; }
+        .handle { width: 100%; height: 40px; display: flex; justify-content: center; align-items: center; cursor: pointer; color: var(--accent); font-size: 12px; font-weight: bold; }
         .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
         .ui-row { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
         
-        input[type="text"] { background: #000; border: 1px solid var(--accent); color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; }
-        .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; }
-        .share-btn { background: #007aff !important; border: none !important; font-weight: bold; flex: 1; }
+        select, input[type="text"] { background: #111; border: 1px solid var(--accent); color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; outline: none; }
+        .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; font-weight: bold; }
+        .share-btn { background: #007aff !important; border: none !important; flex: 1.5; }
         
         .control-group { flex: 1; display: flex; font-size: 10px; color: var(--accent); flex-direction: column; }
-        input[type="range"] { accent-color: var(--accent); }
-        #loading-msg { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: var(--accent); z-index: 50; display: none; }
+        input[type="range"] { accent-color: var(--accent); cursor: pointer; }
+        #loading-msg { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: var(--accent); z-index: 50; display: none; font-weight: bold; text-shadow: 0 0 10px #000; }
     </style>
 </head>
 <body>
 
-<div id="loading-msg">載入中...</div>
+<div id="loading-msg">3D 模型載入中...</div>
 <div id="canvas-container"></div>
 
 <div id="app-ui" class="collapsed">
     <div class="handle" id="ui-toggle">── 點擊展開設定 ──</div>
     <div class="ui-content">
         <div class="ui-row">
-            <input type="text" id="textInput" placeholder="輸入文字..." value="SPHERICAL TEXT">
-            <input type="color" id="colorPicker" value="#00ffff">
+            <select id="landmarkSelect">
+                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb">經典小鴨</option>
+                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Lantern/glTF-Binary/Lantern.glb">東方燈籠</option>
+                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb">科幻頭盔</option>
+                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BoxInterleaved/glTF-Binary/BoxInterleaved.glb">測試立方體</option>
+            </select>
+            <input type="color" id="colorPicker" value="#00ffff" style="width:45px; height:45px; border:none; background:none;">
         </div>
+
+        <div class="ui-row">
+            <input type="text" id="textInput" placeholder="輸入旋轉訊息..." value="GLOBAL LANDMARK">
+        </div>
+
         <div class="ui-row">
             <div class="control-group">
                 <label>旋轉速度</label>
                 <input type="range" id="speedSlider" min="0" max="3" step="0.1" value="1">
             </div>
             <div class="control-group">
-                <label>垂直位置 (高度)</label>
-                <input type="range" id="heightSlider" min="-1.2" max="1.2" step="0.01" value="0">
+                <label>垂直高度 (貼牆移動)</label>
+                <input type="range" id="heightSlider" min="-1.25" max="1.25" step="0.01" value="0">
             </div>
         </div>
+
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 分享目前設定</button>
-            <button class="btn" id="resetCam">🔄 重置視角</button>
+            <button class="btn share-btn" id="shareBtn">🔗 分享目前設計</button>
+            <button class="btn" id="uploadBtn">📂 自行上傳</button>
+            <button class="btn" id="resetCam">🔄 重置</button>
         </div>
     </div>
 </div>
+
+<input type="file" id="real-file-input" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -70,26 +84,28 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-    class SphericalApp {
+    class FullApp {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             
-            // 💡 核心參數：固定半徑為 1.4（貼近球壁），透過 vPos 改變垂直仰角
             this.params = { 
                 speed: 1.0, 
                 fixedRadius: 1.42, 
-                vPos: 0 
+                vPos: 0,
+                modelUrl: ''
             };
             
             this.charGroups = [];
+            this.currentModel = null;
             this.init();
         }
 
         async init() {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
             this.renderer.setPixelRatio(window.devicePixelRatio);
+            this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
             document.getElementById('canvas-container').appendChild(this.renderer.domElement);
 
             this.camera.position.set(0, 3, 6);
@@ -97,7 +113,8 @@
             this.controls.enableDamping = true;
             this.controls.target.set(0, 1.6, 0);
 
-            this._setupScene();
+            this._setupStaticScene();
+            this._loadURLParams();
             this._bindUI();
 
             new RGBELoader().load('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr', (tex) => {
@@ -107,11 +124,22 @@
 
             await document.fonts.ready;
             this.updateText();
+            this._loadModel(this.params.modelUrl || document.getElementById('landmarkSelect').value);
             this._animate();
         }
 
-        _setupScene() {
-            // 水晶球玻璃
+        _loadURLParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
+            if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
+            if (urlParams.has('h')) {
+                this.params.vPos = parseFloat(urlParams.get('h'));
+                document.getElementById('heightSlider').value = this.params.vPos;
+            }
+            if (urlParams.has('m')) this.params.modelUrl = decodeURIComponent(urlParams.get('m'));
+        }
+
+        _setupStaticScene() {
             const globeGeo = new THREE.SphereGeometry(1.5, 64, 64);
             const globeMat = new THREE.MeshPhysicalMaterial({ transmission: 1.0, thickness: 0.1, ior: 1.3, transparent: true, opacity: 0.2, depthWrite: false });
             this.globe = new THREE.Mesh(globeGeo, globeMat);
@@ -119,7 +147,6 @@
             this.globe.renderOrder = 100;
             this.scene.add(this.globe);
 
-            // 底座
             const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.4, 32), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9 }));
             base.position.y = 0.2;
             this.scene.add(base);
@@ -140,7 +167,6 @@
                 ctx.font = style; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillStyle = color;
                 ctx.fillText(char, 256, 256);
-                
                 const tex = new THREE.CanvasTexture(canvas);
                 const group = new THREE.Group();
                 for (let j = 0; j < 8; j++) {
@@ -154,24 +180,50 @@
             });
         }
 
+        _loadModel(url) {
+            if (!url) return;
+            const loader = new GLTFLoader();
+            const msg = document.getElementById('loading-msg');
+            msg.style.display = 'block';
+            loader.load(url, (gltf) => {
+                if (this.currentModel) this.scene.remove(this.currentModel);
+                this.currentModel = gltf.scene;
+                const box = new THREE.Box3().setFromObject(this.currentModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const scale = 1.2 / Math.max(size.x, size.y, size.z);
+                this.currentModel.scale.setScalar(scale);
+                this.currentModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
+                this.scene.add(this.currentModel);
+                msg.style.display = 'none';
+            });
+        }
+
         _bindUI() {
             const get = (id) => document.getElementById(id);
             get('ui-toggle').onclick = () => get('app-ui').classList.toggle('collapsed');
+            get('landmarkSelect').onchange = (e) => this._loadModel(e.target.value);
             get('textInput').oninput = () => this.updateText();
             get('colorPicker').oninput = () => this.updateText();
             get('speedSlider').oninput = (e) => this.params.speed = parseFloat(e.target.value);
-            
-            // 💡 關鍵：高度移動邏輯
             get('heightSlider').oninput = (e) => this.params.vPos = parseFloat(e.target.value);
-            
             get('resetCam').onclick = () => { this.camera.position.set(0, 3, 6); this.controls.target.set(0, 1.6, 0); };
             
+            // 上傳按鈕
+            get('uploadBtn').onclick = () => get('real-file-input').click();
+            get('real-file-input').onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) this._loadModel(URL.createObjectURL(file));
+            };
+
+            // 分享按鈕
             get('shareBtn').onclick = () => {
                 const t = encodeURIComponent(get('textInput').value);
                 const c = get('colorPicker').value.replace('#', '');
                 const h = get('heightSlider').value;
-                const shareUrl = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&h=${h}`;
-                navigator.clipboard.writeText(shareUrl).then(() => alert('分享連結已複製！傳給朋友打開即可看到您的設定。'));
+                const m = encodeURIComponent(get('landmarkSelect').value);
+                const shareUrl = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&h=${h}&m=${m}`;
+                navigator.clipboard.writeText(shareUrl).then(() => alert('分享網址已複製！對方開啟後將看到您現在的配置。'));
             };
         }
 
@@ -179,35 +231,23 @@
             requestAnimationFrame(() => this._animate());
             const time = (Date.now() / 1000) * this.params.speed; 
             const total = this.charGroups.length;
-            
-            // 💡 球面數學計算
-            const R = this.params.fixedRadius; // 固定半徑，保證貼牆
-            const yOffset = this.params.vPos; // 垂直偏移 (高度)
-            
-            // 為了讓文字在上下移動時依然貼牆，我們計算當前高度對應的水平圓半徑
-            // 公式：r = sqrt(R^2 - y^2)
+            const R = this.params.fixedRadius; 
+            const yOffset = this.params.vPos; 
             const horizontalR = Math.sqrt(Math.max(0.1, R*R - yOffset*yOffset));
 
             this.charGroups.forEach((g, i) => {
                 const angle = (time - (i / total) * Math.PI * 2) % (Math.PI * 2);
-                
-                // 設置 3D 位置：高度 y 是固定的，x 和 z 根據高度調整後的半徑旋轉
-                g.position.set(
-                    Math.cos(angle) * horizontalR, 
-                    1.6 + yOffset, 
-                    Math.sin(angle) * horizontalR
-                );
-                
-                // 💡 讓文字始終面向球心 (或背對球心)
+                g.position.set(Math.cos(angle) * horizontalR, 1.6 + yOffset, Math.sin(angle) * horizontalR);
                 g.lookAt(0, 1.6 + yOffset, 0);
                 g.rotateY(Math.PI);
             });
 
+            if (this.currentModel) this.currentModel.rotation.y += 0.003;
             this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
     }
-    new SphericalApp();
+    new FullApp();
 </script>
 </body>
 </html>

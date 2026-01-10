@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Sketchfab Sync</title>
+    <title>3D Globe | Advanced Loader</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -24,7 +24,7 @@
         .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
         .share-btn { background: #3b82f6; flex: 2; }
         .upload-btn { background: #444; flex: 1; }
-        ::placeholder { color: #444; }
+        .hint-text { color: #888; font-size: 10px; width: 100%; text-align: left; margin-top: -4px; }
     </style>
 </head>
 <body>
@@ -37,12 +37,13 @@
             <input type="color" id="colorPicker" value="#00ffff" style="width:40px; height:35px;">
         </div>
         <div class="ui-row">
-            <input type="text" id="modelUrlInput" placeholder="輸入 GitHub 檔名或 GLB 網址">
+            <input type="text" id="modelUrlInput" placeholder="輸入檔名或 Sketchfab ID">
             <select id="fontSelect">
                 <option value='bold 160px "Microsoft JhengHei"'>正黑體</option>
                 <option value='900 160px "Arial"'>Arial</option>
             </select>
         </div>
+        <div class="hint-text">💡 提示：建議將下載的 .glb 檔案與此網頁放在 GitHub 同目錄後輸入檔名。</div>
         <div class="ui-row">
             <span class="label">速度</span>
             <input type="range" id="speedRange" min="0" max="100" value="50">
@@ -50,8 +51,8 @@
             <input type="range" id="heightRange" min="50" max="280" value="160">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 複製純觀看連結</button>
-            <button class="btn upload-btn" id="uploadBtn">📂 本地測試</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結 (收訊者無介面)</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳本地</button>
         </div>
     </div>
 </div>
@@ -113,20 +114,19 @@
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
 
-        // 參數恢復
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
         if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
         
-        let modelToLoad = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb';
+        let modelRef = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb';
         if (urlParams.has('m')) {
-            modelToLoad = decodeURIComponent(urlParams.get('m'));
-            document.getElementById('modelUrlInput').value = modelToLoad;
+            modelRef = decodeURIComponent(urlParams.get('m'));
+            document.getElementById('modelUrlInput').value = modelRef;
         }
 
         updateText();
-        loadModel(modelToLoad);
+        loadModel(modelRef);
         animate();
     }
 
@@ -152,13 +152,17 @@
         });
     }
 
-    function loadModel(url) {
-        if (!url) return;
+    function loadModel(input) {
+        if (!input) return;
+        let url = input;
         
-        // 偵測是否為 Sketchfab 連結並給予提示
-        if (url.includes('skfb.ly') || url.includes('sketchfab.com/models')) {
-            alert("⚠️ 偵測到 Sketchfab 網頁連結。\n請注意：您需要從 Sketchfab 下載 .glb 檔案並與程式放在 GitHub 同目錄下，直接貼網址是無法讀取的喔！");
-            return;
+        // 增加一個簡單的 ID 提取器，如果使用者貼上包含 embed 的網址
+        if (input.includes('sketchfab.com')) {
+            const match = input.match(/\/models\/([a-z0-9]+)/i);
+            if (match) {
+                alert("⚠️ 這是 Sketchfab 網頁 ID。\n由於版權保護，我們無法直接從 ID 抓取檔案，請下載該模型的 .glb 檔案並上傳到 GitHub 後輸入檔案名稱。");
+                return;
+            }
         }
 
         new GLTFLoader().load(url, (gltf) => {
@@ -172,7 +176,7 @@
             currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
             scene.add(currentModel);
         }, undefined, (err) => {
-            console.warn("模型載入失敗:", url);
+            console.warn("無法直接載入此網址，請確認它是 .glb 直連或 GitHub 同目錄下的檔名。");
         });
     }
 
@@ -234,7 +238,7 @@
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=${m}&view=1`;
         
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 純觀看連結已複製！\n請確認您的模型檔已上傳至 GitHub。");
+            alert("✅ 連結已複製！請確保模型檔案已上傳至 GitHub 目錄。");
         });
     };
     init();

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | GitHub Sync Pro</title>
+    <title>3D Globe | Perfect Scale</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -21,7 +21,7 @@
         input[type="text"] { flex: 2; }
         .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; }
         input[type="range"] { flex: 1; height: 4px; accent-color: #00ffff; }
-        .btn { padding: 12px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; transition: 0.3s; }
+        .btn { padding: 12px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
         .share-btn { background: #3b82f6; flex: 2; }
         .upload-btn { background: #444; flex: 1; border: 1px solid #666; }
         .hint-text { color: #00ffff; font-size: 11px; width: 100%; text-align: center; margin-bottom: 4px; opacity: 0.8; }
@@ -32,7 +32,7 @@
 <div id="canvas-container"></div>
 <div id="app-ui">
     <div class="ui-content">
-        <div class="hint-text">請先上傳模型，並確認 GitHub 已存有 3dmodel.glb</div>
+        <div class="hint-text">模型將自動縮放至水晶球大小 (85% 填充)</div>
         <div class="ui-row">
             <input type="text" id="textInput" value="妳好我吃一口">
             <input type="color" id="colorPicker" value="#00ffff" style="width:50px; height:42px; background:none; border:none; padding:0;">
@@ -65,7 +65,8 @@
     let charGroups = [], snowVelocities = [];
     let isMoving = false, moveTimer = 0, textRotation = 0;
     const globeY = 1.6;
-    const globeMaxRadius = 1.48;
+    const globeMaxRadius = 1.48; // 玻璃內壁
+    const targetModelSize = 2.4; // 稍微小於直徑 3.0 (約 80-85% 填充率)
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
@@ -84,7 +85,7 @@
         controls.enableDamping = true;
         controls.addEventListener('change', () => { isMoving = true; moveTimer = 25; });
 
-        scene.add(new THREE.AmbientLight(0xffffff, 3.0));
+        scene.add(new THREE.AmbientLight(0xffffff, 3.2));
         const sun = new THREE.DirectionalLight(0xffffff, 1.5);
         sun.position.set(5, 10, 5);
         scene.add(sun);
@@ -107,13 +108,11 @@
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
 
-        // 恢復分享參數
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
         if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
         
-        // 預設尋找 3dmodel.glb
         let modelRef = '3dmodel.glb';
         if (urlParams.has('m')) modelRef = decodeURIComponent(urlParams.get('m'));
 
@@ -147,15 +146,26 @@
         new GLTFLoader().load(url, (gltf) => {
             if (currentModel) scene.remove(currentModel);
             currentModel = gltf.scene;
+            
+            // 核心調整：計算包圍盒並強行縮放到預設直徑
             const box = new THREE.Box3().setFromObject(currentModel);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
-            const scale = 1.2 / Math.max(size.x, size.y, size.z);
+            
+            // 計算縮放比例，讓模型最大的那一邊等於 targetModelSize
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = targetModelSize / maxDim;
+            
             currentModel.scale.setScalar(scale);
-            currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
+            // 讓模型中心點對齊水晶球中心 (globeY)
+            currentModel.position.set(
+                -center.x * scale, 
+                globeY - center.y * scale, 
+                -center.z * scale
+            );
+            
             scene.add(currentModel);
         }, undefined, () => {
-            // 失敗時載入預設小鴨
             if(url !== 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb') {
                 loadModel('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb');
             }
@@ -185,8 +195,10 @@
         const speed = document.getElementById('speedRange').value / 2500;
         const targetY = document.getElementById('heightRange').value / 100;
         textRotation += speed;
+        
+        // 文字貼合算法
         const relativeY = targetY - globeY; 
-        const dynamicRadius = Math.sqrt(Math.max(0, Math.pow(globeMaxRadius, 2) - Math.pow(relativeY, 2))) * 0.96;
+        const dynamicRadius = Math.sqrt(Math.max(0, Math.pow(globeMaxRadius, 2) - Math.pow(relativeY, 2))) * 0.98;
 
         charGroups.forEach((g, i) => {
             const angle = textRotation - (i / charGroups.length) * Math.PI * 2;
@@ -204,10 +216,7 @@
     document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
     document.getElementById('real-file').onchange = (e) => {
         const file = e.target.files[0];
-        if (file) {
-            loadModel(URL.createObjectURL(file));
-            alert("本地模型預覽成功！\n請記得將此檔案更名為 '3dmodel.glb' 並上傳到 GitHub，分享連結才會生效。");
-        }
+        if (file) loadModel(URL.createObjectURL(file));
     };
 
     document.getElementById('shareBtn').onclick = () => {
@@ -215,11 +224,9 @@
         const c = document.getElementById('colorPicker').value.replace('#','');
         const s = document.getElementById('speedRange').value;
         const h = document.getElementById('heightRange').value;
-        // 固定分享 m=3dmodel.glb
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=3dmodel.glb&view=1`;
-        
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 純觀看連結已複製！\n系統已預設讀取 GitHub 上的 3dmodel.glb。");
+            alert("✅ 已優化比例的觀看連結已複製！");
         });
     };
     init();

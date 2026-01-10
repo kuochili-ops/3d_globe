@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | GitHub Sync</title>
+    <title>3D Globe | Sketchfab Sync</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         #app-ui { 
             position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
-            background: rgba(10, 10, 10, 0.9); padding: 12px 0 env(safe-area-inset-bottom);
+            background: rgba(10, 10, 10, 0.95); padding: 12px 0 env(safe-area-inset-bottom);
             display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
         }
         #app-ui.viewer-mode { display: none !important; }
@@ -24,7 +24,7 @@
         .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
         .share-btn { background: #3b82f6; flex: 2; }
         .upload-btn { background: #444; flex: 1; }
-        ::placeholder { color: #555; }
+        ::placeholder { color: #444; }
     </style>
 </head>
 <body>
@@ -37,7 +37,7 @@
             <input type="color" id="colorPicker" value="#00ffff" style="width:40px; height:35px;">
         </div>
         <div class="ui-row">
-            <input type="text" id="modelUrlInput" placeholder="輸入 GitHub 上的模型檔名 (如: 101.glb)">
+            <input type="text" id="modelUrlInput" placeholder="輸入 GitHub 檔名或 GLB 網址">
             <select id="fontSelect">
                 <option value='bold 160px "Microsoft JhengHei"'>正黑體</option>
                 <option value='900 160px "Arial"'>Arial</option>
@@ -50,7 +50,7 @@
             <input type="range" id="heightRange" min="50" max="280" value="160">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結 (含模型路徑)</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製純觀看連結</button>
             <button class="btn upload-btn" id="uploadBtn">📂 本地測試</button>
         </div>
     </div>
@@ -90,8 +90,8 @@
         controls.enableDamping = true;
         controls.addEventListener('change', () => { isMoving = true; moveTimer = 25; });
 
-        scene.add(new THREE.AmbientLight(0xffffff, 2.8));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        scene.add(new THREE.AmbientLight(0xffffff, 3.0));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.5);
         sun.position.set(5, 10, 5);
         scene.add(sun);
 
@@ -113,21 +113,20 @@
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
 
-        // 恢復參數
+        // 參數恢復
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
         if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
         
-        // 預設模型：如果有參數就讀參數，沒有就讀小鴨
-        let modelFile = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb';
+        let modelToLoad = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb';
         if (urlParams.has('m')) {
-            modelFile = decodeURIComponent(urlParams.get('m'));
-            document.getElementById('modelUrlInput').value = modelFile;
+            modelToLoad = decodeURIComponent(urlParams.get('m'));
+            document.getElementById('modelUrlInput').value = modelToLoad;
         }
 
         updateText();
-        loadModel(modelFile);
+        loadModel(modelToLoad);
         animate();
     }
 
@@ -154,6 +153,14 @@
     }
 
     function loadModel(url) {
+        if (!url) return;
+        
+        // 偵測是否為 Sketchfab 連結並給予提示
+        if (url.includes('skfb.ly') || url.includes('sketchfab.com/models')) {
+            alert("⚠️ 偵測到 Sketchfab 網頁連結。\n請注意：您需要從 Sketchfab 下載 .glb 檔案並與程式放在 GitHub 同目錄下，直接貼網址是無法讀取的喔！");
+            return;
+        }
+
         new GLTFLoader().load(url, (gltf) => {
             if (currentModel) scene.remove(currentModel);
             currentModel = gltf.scene;
@@ -165,10 +172,7 @@
             currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
             scene.add(currentModel);
         }, undefined, (err) => {
-            console.warn("載入失敗，嘗試預設模型");
-            if (url.includes('/') === false && url !== "") { 
-                // 如果輸入的是純檔名且失敗，可能是路徑問題，這裡可以擴充
-            }
+            console.warn("模型載入失敗:", url);
         });
     }
 
@@ -211,16 +215,13 @@
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
-    
-    // 當檔名輸入框改變時嘗試載入
     document.getElementById('modelUrlInput').onchange = (e) => loadModel(e.target.value);
-    
     document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
     document.getElementById('real-file').onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
             loadModel(URL.createObjectURL(file));
-            document.getElementById('modelUrlInput').value = file.name; // 提示使用者記得上傳這個檔案到 GitHub
+            document.getElementById('modelUrlInput').value = file.name;
         }
     };
 
@@ -233,7 +234,7 @@
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=${m}&view=1`;
         
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 分享連結已複製！\n記得將 " + (document.getElementById('modelUrlInput').value || "模型檔") + " 上傳到 GitHub 相同目錄下，對方才看得到喔！");
+            alert("✅ 純觀看連結已複製！\n請確認您的模型檔已上傳至 GitHub。");
         });
     };
     init();

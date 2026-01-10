@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Perfect Scale</title>
+    <title>3D Globe | Auto Tour</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -15,7 +15,7 @@
         #app-ui.viewer-mode { display: none !important; }
         .ui-content { width: 94%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
         .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
-        input[type="text"], input[type="range"] { 
+        input[type="text"], input[type="range"], select { 
             background: #000; border: 1px solid #00ffff; color: #fff; padding: 10px; border-radius: 6px; font-size: 14px; outline: none;
         }
         input[type="text"] { flex: 2; }
@@ -23,8 +23,8 @@
         input[type="range"] { flex: 1; height: 4px; accent-color: #00ffff; }
         .btn { padding: 12px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
         .share-btn { background: #3b82f6; flex: 2; }
-        .upload-btn { background: #444; flex: 1; border: 1px solid #666; }
-        .hint-text { color: #00ffff; font-size: 11px; width: 100%; text-align: center; margin-bottom: 4px; opacity: 0.8; }
+        .mode-btn { background: #10b981; flex: 1; border: 1px solid #059669; }
+        .hint-text { color: #00ffff; font-size: 11px; width: 100%; text-align: center; margin-bottom: 4px; }
     </style>
 </head>
 <body>
@@ -32,9 +32,9 @@
 <div id="canvas-container"></div>
 <div id="app-ui">
     <div class="ui-content">
-        <div class="hint-text">模型將自動縮放至水晶球大小 (85% 填充)</div>
+        <div id="statusHint" class="hint-text">目前模式：手動選擇</div>
         <div class="ui-row">
-            <input type="text" id="textInput" value="妳好我吃一口">
+            <input type="text" id="textInput" value="環遊世界吃一口">
             <input type="color" id="colorPicker" value="#00ffff" style="width:50px; height:42px; background:none; border:none; padding:0;">
         </div>
         <div class="ui-row">
@@ -44,13 +44,11 @@
             <input type="range" id="speedRange" min="0" max="100" value="50">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結 (純觀看)</button>
-            <button class="btn upload-btn" id="uploadBtn">📂 選擇模型</button>
+            <button class="btn share-btn" id="shareBtn">🔗 分享目前觀看</button>
+            <button class="btn mode-btn" id="toggleAutoBtn">🔄 開啟輪播 (1min)</button>
         </div>
     </div>
 </div>
-
-<input type="file" id="real-file" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -65,11 +63,19 @@
     let charGroups = [], snowVelocities = [];
     let isMoving = false, moveTimer = 0, textRotation = 0;
     const globeY = 1.6;
-    const globeMaxRadius = 1.48; // 玻璃內壁
-    const targetModelSize = 2.4; // 稍微小於直徑 3.0 (約 80-85% 填充率)
+    const globeMaxRadius = 1.48;
+    const targetModelSize = 2.4;
+
+    // --- 輪播清單配置 ---
+    // 您可以將 GitHub 上的模型名稱填入此處
+    const modelPlaylist = ['3dmodel.glb', 'taipei101.glb', 'eiffel.glb', 'tokyo.glb'];
+    let currentIdx = 0;
+    let isAutoMode = false;
+    let autoTimer = null;
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
+    if (urlParams.get('auto') === '1') isAutoMode = true;
 
     function init() {
         scene = new THREE.Scene();
@@ -108,17 +114,41 @@
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
 
+        // 參數恢復
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
         if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
         
-        let modelRef = '3dmodel.glb';
-        if (urlParams.has('m')) modelRef = decodeURIComponent(urlParams.get('m'));
-
         updateText();
-        loadModel(modelRef);
+        
+        if (isAutoMode) {
+            startAutoMode();
+        } else {
+            loadModel(urlParams.get('m') || modelPlaylist[0]);
+        }
+        
         animate();
+    }
+
+    function startAutoMode() {
+        isAutoMode = true;
+        document.getElementById('statusHint').innerText = "目前模式：每 60 秒自動輪播";
+        document.getElementById('toggleAutoBtn').innerText = "⏹ 停止輪播";
+        loadModel(modelPlaylist[currentIdx]);
+        
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = setInterval(() => {
+            currentIdx = (currentIdx + 1) % modelPlaylist.length;
+            loadModel(modelPlaylist[currentIdx]);
+        }, 60000); // 60,000ms = 1分鐘
+    }
+
+    function stopAutoMode() {
+        isAutoMode = false;
+        document.getElementById('statusHint').innerText = "目前模式：手動固定";
+        document.getElementById('toggleAutoBtn').innerText = "🔄 開啟輪播 (1min)";
+        if (autoTimer) clearInterval(autoTimer);
     }
 
     function updateText() {
@@ -137,7 +167,6 @@
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: true, alphaTest: 0.4 });
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
             const g = new THREE.Group(); g.add(mesh);
-            g.renderOrder = 5; 
             scene.add(g); charGroups.push(g);
         });
     }
@@ -146,28 +175,32 @@
         new GLTFLoader().load(url, (gltf) => {
             if (currentModel) scene.remove(currentModel);
             currentModel = gltf.scene;
-            
-            // 核心調整：計算包圍盒並強行縮放到預設直徑
             const box = new THREE.Box3().setFromObject(currentModel);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
-            
-            // 計算縮放比例，讓模型最大的那一邊等於 targetModelSize
             const maxDim = Math.max(size.x, size.y, size.z);
             const scale = targetModelSize / maxDim;
             
             currentModel.scale.setScalar(scale);
-            // 讓模型中心點對齊水晶球中心 (globeY)
-            currentModel.position.set(
-                -center.x * scale, 
-                globeY - center.y * scale, 
-                -center.z * scale
-            );
+            currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
             
+            // 加入淡入感（簡單版）
+            currentModel.traverse(child => { if(child.isMesh) { child.material.transparent = true; child.material.opacity = 0; } });
             scene.add(currentModel);
-        }, undefined, () => {
-            if(url !== 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb') {
-                loadModel('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb');
+            
+            // 快速淡入
+            let op = 0;
+            const fadeIn = setInterval(() => {
+                op += 0.1;
+                currentModel.traverse(child => { if(child.isMesh) child.material.opacity = op; });
+                if(op >= 1) clearInterval(fadeIn);
+            }, 50);
+
+        }, undefined, (err) => {
+            console.warn("跳過載入失敗的模型:", url);
+            if (isAutoMode) {
+                currentIdx = (currentIdx + 1) % modelPlaylist.length;
+                loadModel(modelPlaylist[currentIdx]);
             }
         });
     }
@@ -195,8 +228,6 @@
         const speed = document.getElementById('speedRange').value / 2500;
         const targetY = document.getElementById('heightRange').value / 100;
         textRotation += speed;
-        
-        // 文字貼合算法
         const relativeY = targetY - globeY; 
         const dynamicRadius = Math.sqrt(Math.max(0, Math.pow(globeMaxRadius, 2) - Math.pow(relativeY, 2))) * 0.98;
 
@@ -213,10 +244,8 @@
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
-    document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
-    document.getElementById('real-file').onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) loadModel(URL.createObjectURL(file));
+    document.getElementById('toggleAutoBtn').onclick = () => {
+        if (isAutoMode) stopAutoMode(); else startAutoMode();
     };
 
     document.getElementById('shareBtn').onclick = () => {
@@ -224,9 +253,11 @@
         const c = document.getElementById('colorPicker').value.replace('#','');
         const s = document.getElementById('speedRange').value;
         const h = document.getElementById('heightRange').value;
-        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=3dmodel.glb&view=1`;
+        const a = isAutoMode ? 1 : 0;
+        const m = encodeURIComponent(modelPlaylist[currentIdx]);
+        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=${m}&auto=${a}&view=1`;
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 已優化比例的觀看連結已複製！");
+            alert("✅ 展示連結已複製！模式：" + (isAutoMode ? "自動輪播" : "固定展示"));
         });
     };
     init();

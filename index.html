@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Globe | Gravity Fix</title>
+    <title>3D Crystal Globe | UI Pro</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -21,7 +21,8 @@
         input[type="text"] { flex: 2; }
         .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; text-align: center; }
         input[type="range"] { flex: 1; height: 4px; accent-color: #00ffff; }
-        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
+        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; transition: 0.2s; }
+        .btn:active { transform: scale(0.95); }
         .share-btn { background: #3b82f6; flex: 2; }
         .upload-btn { background: #444; flex: 1; }
     </style>
@@ -46,7 +47,7 @@
             <input type="range" id="heightRange" min="50" max="250" value="160">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結</button>
+            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結 (自動複製)</button>
             <button class="btn upload-btn" id="uploadBtn">📂 上傳 GLB</button>
         </div>
     </div>
@@ -82,7 +83,7 @@
         controls.enableDamping = true;
         controls.addEventListener('change', () => { isMoving = true; moveTimer = 25; });
 
-        scene.add(new THREE.AmbientLight(0xffffff, 2));
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
         const sun = new THREE.DirectionalLight(0xffffff, 1.2);
         sun.position.set(5, 10, 5);
         scene.add(sun);
@@ -124,7 +125,7 @@
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(char, 128, 128);
             const tex = new THREE.CanvasTexture(canvas);
-            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: true, alphaTest: 0.5 });
+            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: true, alphaTest: 0.4 });
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
             const g = new THREE.Group(); g.add(mesh);
             g.renderOrder = 1; 
@@ -151,26 +152,15 @@
         const pos = snowSystem.geometry.attributes.position.array;
         for (let i = 0; i < 700; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
-            
-            // 加強噴發力，但增加重力
-            if (isMoving && Math.random() > 0.85) {
-                snowVelocities[i].add(new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.04, (Math.random()-0.5)*0.02));
-            }
-
-            pos[ix] += snowVelocities[i].x; 
-            pos[iy] += snowVelocities[i].y; 
-            pos[iz] += snowVelocities[i].z;
-            
-            // 優化後的物理：重力隨高度略微增加，減少阻力讓下落更乾脆
-            snowVelocities[i].y -= 0.0012; 
-            snowVelocities[i].multiplyScalar(0.96); 
-
+            if (isMoving && Math.random() > 0.85) snowVelocities[i].add(new THREE.Vector3((Math.random()-0.5)*0.02, Math.random()*0.04, (Math.random()-0.5)*0.02));
+            pos[ix] += snowVelocities[i].x; pos[iy] += snowVelocities[i].y; pos[iz] += snowVelocities[i].z;
+            snowVelocities[i].y -= 0.0012; snowVelocities[i].multiplyScalar(0.96); 
             const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
             if (dist > 1.42) {
                 const ratio = 1.42 / dist;
                 pos[ix] *= ratio; pos[iy] = globeY + (dy * ratio); pos[iz] *= ratio;
-                snowVelocities[i].multiplyScalar(-0.15); // 增加一點回彈感
+                snowVelocities[i].multiplyScalar(-0.15);
             }
             if (pos[iy] < 0.28) { pos[iy] = 0.28; snowVelocities[i].set(0,0,0); }
         }
@@ -182,7 +172,8 @@
         textRotation += speed;
         charGroups.forEach((g, i) => {
             const angle = textRotation - (i / charGroups.length) * Math.PI * 2;
-            g.position.set(Math.cos(angle)*1.1, targetY, Math.sin(angle)*1.1);
+            // 修正：增加旋轉半徑至 1.4，讓文字貼近玻璃壁
+            g.position.set(Math.cos(angle)*1.4, targetY, Math.sin(angle)*1.4);
             g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
         });
         if (currentModel) currentModel.rotation.y += 0.003;
@@ -190,6 +181,7 @@
         renderer.render(scene, camera);
     }
 
+    // 事件監聽
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
     document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
@@ -197,9 +189,20 @@
         const file = e.target.files[0];
         if (file) loadModel(URL.createObjectURL(file));
     };
+
+    // 點擊自動複製功能
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
-        window.prompt("分享連結:", `${window.location.origin}${window.location.pathname}?t=${t}&view=1`);
+        const c = document.getElementById('colorPicker').value.replace('#','');
+        const s = document.getElementById('speedRange').value;
+        const h = document.getElementById('heightRange').value;
+        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&view=1`;
+        
+        navigator.clipboard.writeText(url).then(() => {
+            alert("✅ 驚喜連結已複製到剪貼簿！\n您可以直接貼上傳給朋友了。");
+        }).catch(err => {
+            window.prompt("複製失敗，請手動複製：", url);
+        });
     };
     init();
 </script>

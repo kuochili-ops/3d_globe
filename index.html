@@ -3,20 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball Gift</title>
+    <title>3D Crystal Ball | Shake for Snow</title>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
     <style>
         :root { --accent: #00ffff; }
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
         
-        /* 後台介面樣式 */
+        /* 後台介面 */
         #app-ui { 
             position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
             background: rgba(10, 10, 10, 0.95); backdrop-filter: blur(20px); 
             border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom);
         }
-        /* 隱藏模式 */
         #app-ui.viewer-mode { display: none !important; }
 
         .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -24,14 +23,22 @@
         select, input[type="text"] { background: #111; border: 1px solid var(--accent); color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; outline: none; }
         .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; font-weight: bold; }
         .share-btn { background: #007aff !important; border: none !important; flex: 1; }
-        .control-group { flex: 1; display: flex; font-size: 10px; color: var(--accent); flex-direction: column; }
-        input[type="range"] { accent-color: var(--accent); }
-        #loading-msg { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: var(--accent); z-index: 50; display: none; font-weight: bold; }
+        
+        /* 授權按鈕 (僅收訊者且為 iOS 時顯示) */
+        #permission-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 200;
+            background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center;
+        }
+        .perm-btn { padding: 20px 40px; background: var(--accent); color: #000; border-radius: 50px; font-weight: bold; border: none; cursor: pointer; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
     </style>
 </head>
 <body>
 
-<div id="loading-msg">載入中...</div>
+<div id="permission-overlay">
+    <button class="perm-btn" id="requestPerm">點擊開啟搖晃驚喜</button>
+</div>
+
 <div id="canvas-container"></div>
 
 <div id="app-ui">
@@ -40,19 +47,14 @@
             <select id="landmarkSelect">
                 <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb">經典小鴨</option>
                 <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Lantern/glTF-Binary/Lantern.glb">東方燈籠</option>
-                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb">科幻頭盔</option>
             </select>
             <input type="color" id="colorPicker" value="#00ffff">
         </div>
         <div class="ui-row">
-            <input type="text" id="textInput" placeholder="訊息..." value="GIFT FOR YOU">
+            <input type="text" id="textInput" placeholder="訊息..." value="SHAKE ME!">
         </div>
         <div class="ui-row">
-            <div class="control-group"><label>旋轉速度</label><input type="range" id="speedSlider" min="0" max="3" step="0.1" value="1"></div>
-            <div class="control-group"><label>垂直高度</label><input type="range" id="heightSlider" min="-1.25" max="1.25" step="0.01" value="0"></div>
-        </div>
-        <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 複製「驚喜分享連結」</button>
+            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結</button>
             <button class="btn" id="uploadBtn">📂 上傳</button>
         </div>
     </div>
@@ -68,16 +70,15 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-    class GiftOnlyApp {
+    class SnowApp {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             this.params = { speed: 1.0, fixedRadius: 1.42, vPos: 0, modelUrl: '' };
-            this.charGroups = [];
-            this.currentModel = null;
+            this.snowCount = 600;
+            this.snowVelocities = [];
             this.init();
         }
 
@@ -91,14 +92,11 @@
             this.controls.enableDamping = true;
             this.controls.target.set(0, 1.6, 0);
 
-            this._setupStaticScene();
-            this._handleModesAndParams();
+            this._setupScene();
+            this._setupSnow();
+            this._handleParams();
             this._bindUI();
-
-            new RGBELoader().load('https://threejs.org/examples/textures/equirectangular/venice_sunset_1k.hdr', (tex) => {
-                tex.mapping = THREE.EquirectangularReflectionMapping;
-                this.scene.environment = tex;
-            });
+            this._setupMotion();
 
             await document.fonts.ready;
             this.updateText();
@@ -106,128 +104,185 @@
             this._animate();
         }
 
-        _handleModesAndParams() {
-            const urlParams = new URLSearchParams(window.location.search);
-            
-            // 💡 判斷模式：如果有 ?view=1，就隱藏後台
-            if (urlParams.get('view') === '1') {
-                document.getElementById('app-ui').classList.add('viewer-mode');
-            }
-
-            if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
-            if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
-            if (urlParams.has('h')) {
-                this.params.vPos = parseFloat(urlParams.get('h'));
-                document.getElementById('heightSlider').value = this.params.vPos;
-            }
-            if (urlParams.has('m')) this.params.modelUrl = decodeURIComponent(urlParams.get('m'));
-        }
-
-        _setupStaticScene() {
+        _setupScene() {
+            // 水晶球
             const globeGeo = new THREE.SphereGeometry(1.5, 64, 64);
             const globeMat = new THREE.MeshPhysicalMaterial({ transmission: 1.0, thickness: 0.1, ior: 1.3, transparent: true, opacity: 0.2, depthWrite: false });
-            this.globe = new THREE.Mesh(globeGeo, globeMat);
-            this.globe.position.y = 1.6;
-            this.globe.renderOrder = 100;
-            this.scene.add(this.globe);
+            this.scene.add(new THREE.Mesh(globeGeo, globeMat)).position.y = 1.6;
 
-            const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.4, 32), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9 }));
+            // 底座
+            const base = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.4, 32), new THREE.MeshStandardMaterial({ color: 0x111111 }));
             base.position.y = 0.2;
             this.scene.add(base);
+
+            const light = new THREE.PointLight(0xffffff, 10);
+            light.position.set(2, 5, 2);
+            this.scene.add(light);
+            this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
         }
 
-        updateText() {
-            const style = '900 400px "Noto Sans TC"';
-            const textVal = document.getElementById('textInput').value || " ";
-            const color = document.getElementById('colorPicker').value;
-
-            this.charGroups.forEach(g => this.scene.remove(g));
-            this.charGroups = [];
-
-            textVal.split('').forEach((char) => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 512; canvas.height = 512;
-                const ctx = canvas.getContext('2d');
-                ctx.font = style; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillStyle = color;
-                ctx.fillText(char, 256, 256);
-                const tex = new THREE.CanvasTexture(canvas);
-                const group = new THREE.Group();
-                for (let j = 0; j < 8; j++) {
-                    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }));
-                    m.position.z = -j * 0.008;
-                    group.add(m);
-                }
-                group.renderOrder = 50; 
-                this.scene.add(group);
-                this.charGroups.push(group);
-            });
+        _setupSnow() {
+            const geo = new THREE.BufferGeometry();
+            const pos = [];
+            for (let i = 0; i < this.snowCount; i++) {
+                // 初始位置在球體底部
+                pos.push((Math.random()-0.5)*2, 0.2 + Math.random()*0.5, (Math.random()-0.5)*2);
+                this.snowVelocities.push(new THREE.Vector3(0, 0, 0));
+            }
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.03, transparent: true, opacity: 0.8 });
+            this.snowSystem = new THREE.Points(geo, mat);
+            this.scene.add(this.snowSystem);
         }
 
-        _loadModel(url) {
-            if (!url) return;
-            const loader = new GLTFLoader();
-            document.getElementById('loading-msg').style.display = 'block';
-            loader.load(url, (gltf) => {
-                if (this.currentModel) this.scene.remove(this.currentModel);
-                this.currentModel = gltf.scene;
-                const box = new THREE.Box3().setFromObject(this.currentModel);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-                const scale = 1.2 / Math.max(size.x, size.y, size.z);
-                this.currentModel.scale.setScalar(scale);
-                this.currentModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
-                this.scene.add(this.currentModel);
-                document.getElementById('loading-msg').style.display = 'none';
-            });
+        _setupMotion() {
+            const requestBtn = document.getElementById('requestPerm');
+            const overlay = document.getElementById('permission-overlay');
+
+            // 判斷是否需要授權 (iOS 13+)
+            if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+                overlay.style.display = 'flex';
+                requestBtn.onclick = () => {
+                    DeviceMotionEvent.requestPermission().then(res => {
+                        if (res === 'granted') {
+                            window.addEventListener('devicemotion', (e) => this._onShake(e));
+                            overlay.style.display = 'none';
+                        }
+                    });
+                };
+            } else {
+                // Android 或其他
+                window.addEventListener('devicemotion', (e) => this._onShake(e));
+            }
         }
 
-        _bindUI() {
-            const get = (id) => document.getElementById(id);
-            get('landmarkSelect').onchange = (e) => this._loadModel(e.target.value);
-            get('textInput').oninput = () => this.updateText();
-            get('colorPicker').oninput = () => this.updateText();
-            get('speedSlider').oninput = (e) => this.params.speed = parseFloat(e.target.value);
-            get('heightSlider').oninput = (e) => this.params.vPos = parseFloat(e.target.value);
-            
-            get('uploadBtn').onclick = () => get('real-file-input').click();
-            get('real-file-input').onchange = (e) => {
-                const file = e.target.files[0];
-                if (file) this._loadModel(URL.createObjectURL(file));
-            };
+        _onShake(event) {
+            const acc = event.acceleration;
+            if (!acc) return;
+            const threshold = 15; // 搖晃強度門檻
+            if (Math.abs(acc.x) > threshold || Math.abs(acc.y) > threshold || Math.abs(acc.z) > threshold) {
+                this._shakeSnow();
+            }
+        }
 
-            get('shareBtn').onclick = () => {
-                const t = encodeURIComponent(get('textInput').value);
-                const c = get('colorPicker').value.replace('#', '');
-                const h = get('heightSlider').value;
-                const m = encodeURIComponent(get('landmarkSelect').value);
-                // 💡 分享連結中強制加入 view=1，這會讓收訊者模式開啟
-                const shareUrl = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&h=${h}&m=${m}&view=1`;
-                navigator.clipboard.writeText(shareUrl).then(() => alert('驚喜連結已複製！傳給朋友打開，他將看不到任何後台按鈕。'));
-            };
+        _shakeSnow() {
+            for (let i = 0; i < this.snowCount; i++) {
+                this.snowVelocities[i].set(
+                    (Math.random() - 0.5) * 0.05,
+                    Math.random() * 0.08,
+                    (Math.random() - 0.5) * 0.05
+                );
+            }
         }
 
         _animate() {
             requestAnimationFrame(() => this._animate());
-            const time = (Date.now() / 1000) * this.params.speed; 
-            const total = this.charGroups.length;
-            const R = this.params.fixedRadius; 
-            const yOffset = this.params.vPos; 
-            const horizontalR = Math.sqrt(Math.max(0.1, R*R - yOffset*yOffset));
+            
+            // 雪花物理邏輯
+            const positions = this.snowSystem.geometry.attributes.position.array;
+            for (let i = 0; i < this.snowCount; i++) {
+                const ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+                
+                // 應用速度
+                positions[ix] += this.snowVelocities[i].x;
+                positions[iy] += this.snowVelocities[i].y;
+                positions[iz] += this.snowVelocities[i].z;
 
+                // 重力與空氣阻力
+                this.snowVelocities[i].y -= 0.001; // 重力
+                this.snowVelocities[i].multiplyScalar(0.98); // 阻力
+
+                // 球體碰撞偵測 (中心點 0, 1.6, 半徑 1.45)
+                const dx = positions[ix], dy = positions[iy] - 1.6, dz = positions[iz];
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                if (dist > 1.45) {
+                    this.snowVelocities[i].multiplyScalar(-0.5); // 撞到牆彈回來
+                }
+                
+                // 地面限制
+                if (positions[iy] < 0.25) {
+                    positions[iy] = 0.25;
+                    this.snowVelocities[i].set(0,0,0);
+                }
+            }
+            this.snowSystem.geometry.attributes.position.needsUpdate = true;
+
+            // 文字旋轉邏輯
+            const time = (Date.now() / 1000) * this.params.speed; 
+            const horizontalR = Math.sqrt(Math.max(0.1, this.params.fixedRadius**2 - this.params.vPos**2));
             this.charGroups.forEach((g, i) => {
-                const angle = (time - (i / total) * Math.PI * 2) % (Math.PI * 2);
-                g.position.set(Math.cos(angle) * horizontalR, 1.6 + yOffset, Math.sin(angle) * horizontalR);
-                g.lookAt(0, 1.6 + yOffset, 0);
+                const angle = (time - (i / this.charGroups.length) * Math.PI * 2) % (Math.PI * 2);
+                g.position.set(Math.cos(angle) * horizontalR, 1.6 + this.params.vPos, Math.sin(angle) * horizontalR);
+                g.lookAt(0, 1.6 + this.params.vPos, 0);
                 g.rotateY(Math.PI);
             });
 
-            if (this.currentModel) this.currentModel.rotation.y += 0.003;
             this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
+
+        // ... (保留之前的 _loadModel, updateText, _bindUI, _handleParams 邏輯)
+        _handleParams() {
+            const p = new URLSearchParams(window.location.search);
+            if (p.get('view')==='1') document.getElementById('app-ui').classList.add('viewer-mode');
+            if (p.has('t')) document.getElementById('textInput').value = decodeURIComponent(p.get('t'));
+            if (p.has('c')) document.getElementById('colorPicker').value = '#' + p.get('c');
+            if (p.has('m')) this.params.modelUrl = decodeURIComponent(p.get('m'));
+        }
+
+        _bindUI() {
+            const get = (id) => document.getElementById(id);
+            get('textInput').oninput = () => this.updateText();
+            get('colorPicker').oninput = () => this.updateText();
+            get('uploadBtn').onclick = () => get('real-file-input').click();
+            get('real-file-input').onchange = (e) => {
+                const f = e.target.files[0];
+                if(f) this._loadModel(URL.createObjectURL(f));
+            };
+            get('shareBtn').onclick = () => {
+                const t = encodeURIComponent(get('textInput').value);
+                const c = get('colorPicker').value.replace('#','');
+                const m = encodeURIComponent(get('landmarkSelect').value);
+                const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&view=1`;
+                navigator.clipboard.writeText(url).then(() => alert('驚喜連結已複製！傳給朋友，叫他「搖一搖」手機。'));
+            };
+        }
+
+        updateText() {
+            const textVal = document.getElementById('textInput').value || " ";
+            const color = document.getElementById('colorPicker').value;
+            this.charGroups.forEach(g => this.scene.remove(g));
+            this.charGroups = [];
+            textVal.split('').forEach(char => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 512; canvas.height = 512;
+                const ctx = canvas.getContext('2d');
+                ctx.font = '900 400px "Noto Sans TC"'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillStyle = color; ctx.fillText(char, 256, 256);
+                const tex = new THREE.CanvasTexture(canvas);
+                const g = new THREE.Group();
+                for(let j=0; j<8; j++){
+                    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), new THREE.MeshBasicMaterial({map:tex, transparent:true, alphaTest:0.1}));
+                    m.position.z = -j*0.008; g.add(m);
+                }
+                this.scene.add(g); this.charGroups.push(g);
+            });
+        }
+
+        _loadModel(url) {
+            new GLTFLoader().load(url, (gltf) => {
+                if (this.currentModel) this.scene.remove(this.currentModel);
+                this.currentModel = gltf.scene;
+                const box = new THREE.Box3().setFromObject(this.currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                const scale = 1.2 / Math.max(size.x, size.y, size.z);
+                this.currentModel.scale.setScalar(scale);
+                this.currentModel.position.set(0, 1.6 - (box.getCenter(new THREE.Vector3()).y * scale), 0);
+                this.scene.add(this.currentModel);
+            });
+        }
     }
-    new GiftOnlyApp();
+    new SnowApp();
 </script>
 </body>
 </html>

@@ -3,51 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Ball | Correct Reading Order</title>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Long+Cang&family=ZCOOL+QingKe+HuangYou&family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
+    <title>3D Crystal Ball Landmark</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@900&family=Noto+Sans+TC:wght@900&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; background: #050505; overflow: hidden; font-family: sans-serif; height: 100vh; }
+        :root { --accent: #00ffff; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; }
+        
+        /* 可收合 UI */
         #app-ui { 
             position: absolute; bottom: 0; left: 0; width: 100%; z-index: 100; 
             background: rgba(10, 10, 10, 0.9); backdrop-filter: blur(20px); 
-            border-top: 1px solid #333; padding-bottom: env(safe-area-inset-bottom); 
+            border-top: 1px solid #333; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            padding-bottom: env(safe-area-inset-bottom);
         }
-        .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        #app-ui.collapsed { transform: translateY(calc(100% - 40px)); }
+
+        .handle { 
+            width: 100%; height: 40px; display: flex; justify-content: center; align-items: center; 
+            cursor: pointer; color: var(--accent); font-size: 12px; font-weight: bold; border-bottom: 1px solid #222;
+        }
+
+        .ui-content { padding: 15px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
         .ui-row { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-        .control-group { flex: 1; display: flex; flex-direction: column; }
-        label { color: #00ffff; font-size: 10px; font-weight: bold; margin-bottom: 4px; }
-        input[type="range"] { width: 100%; accent-color: #00ffff; }
-        input[type="text"] { background: #000; border: 1px solid #0ff; color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; }
-        .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; }
-        #loading-msg { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: #00ffff; z-index: 50; display: none; font-weight: bold; }
+        
+        select, input[type="text"] { 
+            background: #000; border: 1px solid var(--accent); color: #fff; padding: 10px; border-radius: 8px; flex: 1; font-size: 14px; 
+        }
+        .btn { padding: 10px 15px; background: #222; border: 1px solid #444; border-radius: 8px; color: #fff; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .control-group { flex: 1; display: flex; flex-direction: column; font-size: 10px; color: var(--accent); font-weight: bold; }
+        input[type="range"] { accent-color: var(--accent); }
+
+        #loading-msg { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); color: var(--accent); z-index: 50; display: none; font-weight: bold; text-align: center; }
     </style>
 </head>
 <body>
 
-<div id="loading-msg">模型載入中...</div>
+<div id="loading-msg">正在載入世界地標...</div>
 <div id="canvas-container"></div>
 
 <div id="app-ui">
+    <div class="handle" id="ui-toggle">▲ 展開設定 / ▼ 收合介面</div>
     <div class="ui-content">
         <div class="ui-row">
-            <input type="text" id="textInput" value="字頭在前的順時鐘旋轉">
+            <select id="landmarkSelect">
+                <option value="">-- 選擇城市地標 --</option>
+                <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb">測試物體 (預設)</option>
+                <option value="https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb">倫敦機器人 (範例)</option>
+            </select>
             <input type="color" id="colorPicker" value="#00ffff" style="width:45px; height:45px; border:none; background:none;">
-            <button class="btn" id="fontToggle">字體</button>
         </div>
+        
         <div class="ui-row">
-            <div class="control-group">
-                <label>旋轉速度 (CLOCKWISE)</label>
-                <input type="range" id="speedSlider" min="0" max="3.0" step="0.1" value="1.0">
-            </div>
-            <div class="control-group">
-                <label>環繞半徑 RADIUS</label>
-                <input type="range" id="radiusSlider" min="0.5" max="1.45" step="0.01" value="1.35">
-            </div>
+            <input type="text" id="textInput" value="LANDMARKS OF THE WORLD">
         </div>
+        
         <div class="ui-row">
-            <button class="btn" id="uploadBtn" style="flex:1; background:#007aff; border:none;">📂 載入 GLB 模型</button>
-            <button class="btn" id="resetCam" style="flex:0.4;">🔄 重置相機</button>
+            <div class="control-group"><label>旋轉速度</label><input type="range" id="speedSlider" min="0" max="3" step="0.1" value="1"></div>
+            <div class="control-group"><label>文字半徑</label><input type="range" id="radiusSlider" min="0.5" max="1.45" step="0.01" value="1.35"></div>
+        </div>
+
+        <div class="ui-row">
+            <button class="btn" id="uploadBtn">📂 上傳自己的 GLB</button>
+            <button class="btn" id="resetCam">🔄 重置視角</button>
         </div>
     </div>
 </div>
@@ -64,14 +82,14 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 
-    class FinalOrderApp {
+    class LandmarkApp {
         constructor() {
             this.scene = new THREE.Scene();
             this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            this.params = { speed: 1.0, radius: 1.35, fontIdx: 0, fontStyles: ['900 400px "Noto Serif TC"', '400 400px "Long Cang"', '400 400px "ZCOOL QingKe HuangYou"', '900 400px "Noto Sans TC"'] };
+            this.params = { speed: 1.0, radius: 1.35 };
             this.charGroups = [];
-            this.userModel = null;
+            this.landmarkModel = null;
             this.init();
         }
 
@@ -113,7 +131,7 @@
         }
 
         async updateText() {
-            const style = this.params.fontStyles[this.params.fontIdx];
+            const style = '900 400px "Noto Sans TC"';
             const textVal = document.getElementById('textInput').value || " ";
             const color = document.getElementById('colorPicker').value;
 
@@ -127,11 +145,10 @@
                 ctx.font = style; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillStyle = color;
                 ctx.fillText(char, 256, 256);
-
                 const tex = new THREE.CanvasTexture(canvas);
                 const group = new THREE.Group();
-                for (let j = 0; j < 10; j++) {
-                    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.4), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }));
+                for (let j = 0; j < 8; j++) {
+                    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.05, side: THREE.DoubleSide }));
                     m.position.z = -j * 0.008;
                     group.add(m);
                 }
@@ -141,34 +158,43 @@
             });
         }
 
+        _loadModel(url) {
+            if (!url) return;
+            const loader = new GLTFLoader();
+            document.getElementById('loading-msg').style.display = 'block';
+            loader.load(url, (gltf) => {
+                if (this.landmarkModel) this.scene.remove(this.landmarkModel);
+                this.landmarkModel = gltf.scene;
+                const box = new THREE.Box3().setFromObject(this.landmarkModel);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const scale = 1.3 / Math.max(size.x, size.y, size.z);
+                this.landmarkModel.scale.setScalar(scale);
+                this.landmarkModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
+                this.scene.add(this.landmarkModel);
+                document.getElementById('loading-msg').style.display = 'none';
+            });
+        }
+
         _bindUI() {
             const get = (id) => document.getElementById(id);
+            
+            // UI 收合功能
+            get('ui-toggle').onclick = () => get('app-ui').classList.toggle('collapsed');
+
+            // 地標切換
+            get('landmarkSelect').onchange = (e) => this._loadModel(e.target.value);
+            
             get('textInput').oninput = () => this.updateText();
             get('colorPicker').oninput = () => this.updateText();
-            get('fontToggle').onclick = () => { this.params.fontIdx = (this.params.fontIdx+1)%4; this.updateText(); };
             get('speedSlider').oninput = (e) => this.params.speed = parseFloat(e.target.value);
             get('radiusSlider').oninput = (e) => this.params.radius = parseFloat(e.target.value);
-            get('resetCam').onclick = () => { this.camera.position.set(0, 3, 6); this.controls.target.set(0, 1.6, 0); this.controls.update(); };
-
-            const fileInput = get('real-file-input');
-            get('uploadBtn').onclick = () => fileInput.click();
-            fileInput.onchange = (e) => {
+            get('resetCam').onclick = () => { this.camera.position.set(0, 3, 6); this.controls.target.set(0, 1.6, 0); };
+            
+            get('uploadBtn').onclick = () => get('real-file-input').click();
+            get('real-file-input').onchange = (e) => {
                 const file = e.target.files[0];
-                if (file) {
-                    document.getElementById('loading-msg').style.display = 'block';
-                    new GLTFLoader().load(URL.createObjectURL(file), (gltf) => {
-                        if (this.userModel) this.scene.remove(this.userModel);
-                        this.userModel = gltf.scene;
-                        const box = new THREE.Box3().setFromObject(this.userModel);
-                        const center = box.getCenter(new THREE.Vector3());
-                        const size = box.getSize(new THREE.Vector3());
-                        const scale = 1.2 / Math.max(size.x, size.y, size.z);
-                        this.userModel.scale.setScalar(scale);
-                        this.userModel.position.set(-center.x*scale, -center.y*scale + 1.6, -center.z*scale);
-                        this.scene.add(this.userModel);
-                        document.getElementById('loading-msg').style.display = 'none';
-                    });
-                }
+                if (file) this._loadModel(URL.createObjectURL(file));
             };
         }
 
@@ -179,21 +205,18 @@
             const total = this.charGroups.length;
 
             this.charGroups.forEach((g, i) => {
-                // 💡 修正邏輯：原本是 + (i/total)，現在改為 - (i/total)
-                // 這樣在順時鐘轉動時，第一個字會帶領後面的字，保持正確讀序
                 const angle = (time - (i / total) * Math.PI * 2) % (Math.PI * 2);
-                
                 g.position.set(Math.cos(angle) * radius, 1.6, Math.sin(angle) * radius);
                 g.lookAt(0, 1.6, 0);
                 g.rotateY(Math.PI);
             });
 
-            if (this.userModel) this.userModel.rotation.y += 0.005;
+            if (this.landmarkModel) this.landmarkModel.rotation.y += 0.003;
             this.controls.update();
             this.renderer.render(this.scene, this.camera);
         }
     }
-    new FinalOrderApp();
+    new LandmarkApp();
 </script>
 </body>
 </html>

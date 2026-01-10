@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Duck Globe Pro Custom</title>
+    <title>3D Crystal Globe | Full Features</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -14,18 +14,20 @@
             display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
         }
         #app-ui.viewer-mode { display: none !important; }
-        .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
+        .ui-content { width: 94%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
         .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
         
         select, input[type="text"], input[type="range"] { 
             background: #111; border: 1px solid #00ffff; color: #fff; padding: 8px; border-radius: 6px; font-size: 13px; outline: none;
         }
         input[type="text"] { flex: 2; }
-        select { flex: 1; }
-        .label { color: #00ffff; font-size: 11px; min-width: 40px; font-weight: bold; }
+        select { flex: 1.2; }
+        .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; text-align: center; }
         input[type="range"] { flex: 1; height: 4px; accent-color: #00ffff; }
         
-        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; background: #3b82f6; color: white; margin-top: 4px; }
+        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
+        .share-btn { background: #3b82f6; flex: 2; }
+        .upload-btn { background: #444; flex: 1; }
     </style>
 </head>
 <body>
@@ -40,7 +42,7 @@
                 <option value='bold 160px "Microsoft JhengHei"'>正黑體</option>
                 <option value='bold 160px "serif"'>明體</option>
                 <option value='900 160px "Arial"'>Arial</option>
-                <option value='italic bold 160px "Courier New"'>手寫風</option>
+                <option value='italic bold 160px "Courier New"'>手寫</option>
             </select>
         </div>
         <div class="ui-row">
@@ -49,9 +51,14 @@
             <span class="label">高度</span>
             <input type="range" id="heightRange" min="50" max="250" value="160">
         </div>
-        <button class="btn" id="shareBtn">🔗 分享驚喜禮物連結</button>
+        <div class="ui-row">
+            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳 GLB</button>
+        </div>
     </div>
 </div>
+
+<input type="file" id="real-file" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -62,10 +69,9 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    let scene, camera, renderer, controls, snowSystem, duck;
+    let scene, camera, renderer, controls, snowSystem, currentModel;
     let charGroups = [], snowVelocities = [];
-    let isMoving = false, moveTimer = 0;
-    let textRotation = 0;
+    let isMoving = false, moveTimer = 0, textRotation = 0;
     
     const globeY = 1.6;
     const globeLimit = 1.42;
@@ -89,7 +95,7 @@
         sun.position.set(5, 10, 5);
         scene.add(sun);
 
-        // 透明球體
+        // 水晶球
         const globe = new THREE.Mesh(
             new THREE.SphereGeometry(1.5, 48, 48),
             new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15 })
@@ -109,7 +115,8 @@
         scene.add(snowSystem);
 
         updateText();
-        loadDuck();
+        // 預設載入小鴨
+        loadModel('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb');
         animate();
     }
 
@@ -121,8 +128,7 @@
         charGroups.forEach(g => scene.remove(g));
         charGroups = [];
 
-        const chars = Array.from(textStr); 
-        chars.forEach((char) => {
+        Array.from(textStr).forEach((char) => {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
@@ -139,19 +145,28 @@
         });
     }
 
-    function loadDuck() {
-        new GLTFLoader().load('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb', (gltf) => {
-            duck = gltf.scene;
-            duck.scale.setScalar(0.85);
-            duck.position.y = 1.05;
-            scene.add(duck);
+    function loadModel(url) {
+        new GLTFLoader().load(url, (gltf) => {
+            if (currentModel) scene.remove(currentModel);
+            currentModel = gltf.scene;
+            
+            // 自動縮放與置中
+            const box = new THREE.Box3().setFromObject(currentModel);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const scale = 1.0 / maxDim;
+            
+            currentModel.scale.setScalar(scale);
+            currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
+            scene.add(currentModel);
         });
     }
 
     function animate() {
         requestAnimationFrame(animate);
         
-        // 雪花物理
+        // 雪花物理 (禁錮在球內)
         const pos = snowSystem.geometry.attributes.position.array;
         for (let i = 0; i < 800; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
@@ -173,7 +188,7 @@
         snowSystem.geometry.attributes.position.needsUpdate = true;
         if (moveTimer > 0) moveTimer--; else isMoving = false;
 
-        // 文字運動與位置恢復
+        // 文字旋轉
         const speed = document.getElementById('speedRange').value / 2500;
         const targetY = document.getElementById('heightRange').value / 100;
         textRotation += speed;
@@ -184,15 +199,26 @@
             g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
         });
 
-        if (duck) duck.rotation.y += 0.004;
+        if (currentModel) currentModel.rotation.y += 0.004;
         controls.update();
         renderer.render(scene, camera);
     }
 
-    // 事件監聽全恢復
+    // 事件監聽
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
     document.getElementById('fontSelect').onchange = updateText;
+    
+    // 上傳按鈕邏輯
+    document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
+    document.getElementById('real-file').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const url = URL.createObjectURL(file);
+            loadModel(url);
+        }
+    };
+
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
@@ -201,7 +227,7 @@
         window.prompt("分享連結:", `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&view=1`);
     };
 
-    // 處理 URL 參數恢復設定
+    // 處理 URL 參數
     const p = new URLSearchParams(window.location.search);
     if (p.has('t')) document.getElementById('textInput').value = decodeURIComponent(p.get('t'));
     if (p.has('c')) document.getElementById('colorPicker').value = '#' + p.get('c');

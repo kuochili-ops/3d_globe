@@ -3,26 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Crystal Globe | UI Pro</title>
+    <title>3D Crystal Globe | Pure View</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        /* 操作介面 */
         #app-ui { 
             position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
-            background: rgba(15, 15, 15, 0.95); padding: 10px 0 env(safe-area-inset-bottom);
+            background: rgba(10, 10, 10, 0.9); padding: 12px 0 env(safe-area-inset-bottom);
             display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
         }
+        
+        /* 純觀看目的：徹底移除介面 */
         #app-ui.viewer-mode { display: none !important; }
+
         .ui-content { width: 94%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; }
         .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
         select, input[type="text"], input[type="range"] { 
-            background: #111; border: 1px solid #00ffff; color: #fff; padding: 8px; border-radius: 6px; font-size: 13px; outline: none;
+            background: #000; border: 1px solid #00ffff; color: #fff; padding: 8px; border-radius: 6px; font-size: 13px;
         }
         input[type="text"] { flex: 2; }
-        .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; text-align: center; }
+        .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; }
         input[type="range"] { flex: 1; height: 4px; accent-color: #00ffff; }
-        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; transition: 0.2s; }
-        .btn:active { transform: scale(0.95); }
+        .btn { padding: 10px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 13px; color: white; }
         .share-btn { background: #3b82f6; flex: 2; }
         .upload-btn { background: #444; flex: 1; }
     </style>
@@ -30,6 +34,7 @@
 <body>
 
 <div id="canvas-container"></div>
+
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
@@ -44,11 +49,11 @@
             <span class="label">速度</span>
             <input type="range" id="speedRange" min="0" max="100" value="50">
             <span class="label">高度</span>
-            <input type="range" id="heightRange" min="50" max="250" value="160">
+            <input type="range" id="heightRange" min="50" max="280" value="160">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結 (自動複製)</button>
-            <button class="btn upload-btn" id="uploadBtn">📂 上傳 GLB</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製純觀看連結</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳模型</button>
         </div>
     </div>
 </div>
@@ -68,6 +73,13 @@
     let charGroups = [], snowVelocities = [];
     let isMoving = false, moveTimer = 0, textRotation = 0;
     const globeY = 1.6;
+    const globeMaxRadius = 1.48; // 玻璃內壁極限
+
+    // 讀取 URL 參數
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('view') === '1') {
+        document.getElementById('app-ui').classList.add('viewer-mode');
+    }
 
     function init() {
         scene = new THREE.Scene();
@@ -83,7 +95,7 @@
         controls.enableDamping = true;
         controls.addEventListener('change', () => { isMoving = true; moveTimer = 25; });
 
-        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+        scene.add(new THREE.AmbientLight(0xffffff, 2.8));
         const sun = new THREE.DirectionalLight(0xffffff, 1.2);
         sun.position.set(5, 10, 5);
         scene.add(sun);
@@ -93,7 +105,7 @@
             new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15, depthWrite: false })
         );
         globe.position.y = globeY;
-        globe.renderOrder = 2; 
+        globe.renderOrder = 10; // 確保玻璃在最外層渲染
         scene.add(globe);
 
         const snowGeo = new THREE.BufferGeometry();
@@ -105,6 +117,12 @@
         snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
+
+        // 套用參數
+        if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
+        if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
+        if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
+        if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
 
         updateText();
         loadModel('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb');
@@ -128,7 +146,7 @@
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: true, alphaTest: 0.4 });
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
             const g = new THREE.Group(); g.add(mesh);
-            g.renderOrder = 1; 
+            g.renderOrder = 5; 
             scene.add(g); charGroups.push(g);
         });
     }
@@ -167,21 +185,26 @@
         snowSystem.geometry.attributes.position.needsUpdate = true;
         if (moveTimer > 0) moveTimer--; else isMoving = false;
 
+        // 文字旋轉與「球體動態路徑計算」
         const speed = document.getElementById('speedRange').value / 2500;
         const targetY = document.getElementById('heightRange').value / 100;
         textRotation += speed;
+
+        // 核心計算：根據高度(y) 計算圓橫截面半徑 r = sqrt(R^2 - y^2)
+        const relativeY = targetY - globeY; // 相對於球心的垂直距離
+        const dynamicRadius = Math.sqrt(Math.max(0, Math.pow(globeMaxRadius, 2) - Math.pow(relativeY, 2))) * 0.96;
+
         charGroups.forEach((g, i) => {
             const angle = textRotation - (i / charGroups.length) * Math.PI * 2;
-            // 修正：增加旋轉半徑至 1.4，讓文字貼近玻璃壁
-            g.position.set(Math.cos(angle)*1.4, targetY, Math.sin(angle)*1.4);
+            g.position.set(Math.cos(angle) * dynamicRadius, targetY, Math.sin(angle) * dynamicRadius);
             g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
         });
+
         if (currentModel) currentModel.rotation.y += 0.003;
         controls.update();
         renderer.render(scene, camera);
     }
 
-    // 事件監聽
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
     document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
@@ -190,7 +213,6 @@
         if (file) loadModel(URL.createObjectURL(file));
     };
 
-    // 點擊自動複製功能
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
@@ -199,9 +221,7 @@
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&view=1`;
         
         navigator.clipboard.writeText(url).then(() => {
-            alert("✅ 驚喜連結已複製到剪貼簿！\n您可以直接貼上傳給朋友了。");
-        }).catch(err => {
-            window.prompt("複製失敗，請手動複製：", url);
+            alert("✅ 純觀看連結已複製！\n對方打開後將不會看到操作介面。");
         });
     };
     init();

@@ -3,31 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Duck Globe Final</title>
+    <title>3D Duck Globe Fixed</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; height: 100vh; touch-action: none; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
-        
         #app-ui { 
-            position: absolute !important; bottom: 0 !important; left: 0 !important; width: 100% !important; z-index: 1000 !important; 
-            background: rgba(10, 10, 10, 0.9) !important; padding: 15px 0 env(safe-area-inset-bottom) !important;
-            display: flex !important; flex-direction: column !important; align-items: center !important;
-            border-top: 1px solid #333 !important;
+            position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
+            background: rgba(15, 15, 15, 0.9); padding: 15px 0 env(safe-area-inset-bottom);
+            display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
         }
         #app-ui.viewer-mode { display: none !important; }
         .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 10px; }
         .ui-row { display: flex; width: 100%; gap: 8px; align-items: center; }
-        select, input[type="text"] { background: #000; border: 1.5px solid #00ffff; color: #fff; padding: 10px; border-radius: 8px; font-size: 14px; outline: none; flex: 1; }
-        input[type="color"] { width: 45px; height: 40px; background: none; border: 1.5px solid #00ffff; border-radius: 8px; cursor: pointer; }
+        select, input[type="text"] { background: #000; border: 1.5px solid #00ffff; color: #fff; padding: 10px; border-radius: 8px; font-size: 14px; flex: 1; }
+        input[type="color"] { width: 45px; height: 40px; background: none; border: 1.5px solid #00ffff; border-radius: 8px; }
         .btn { padding: 12px; border-radius: 8px; font-weight: bold; border: none; cursor: pointer; font-size: 14px; }
         .share-btn { background: #3b82f6; color: white; flex: 2; }
-        .upload-btn { background: #333; color: white; flex: 1; }
     </style>
 </head>
 <body>
 
 <div id="canvas-container"></div>
-
 <div id="app-ui">
     <div class="ui-content">
         <div class="ui-row">
@@ -35,16 +31,13 @@
                 <option value="https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb">經典小鴨</option>
             </select>
             <input type="color" id="colorPicker" value="#00ffff">
-            <input type="text" id="textInput" value="HELLO DUCK" placeholder="輸入文字...">
+            <input type="text" id="textInput" value="HELLO DUCK">
         </div>
         <div class="ui-row">
-            <button class="btn share-btn" id="shareBtn">🔗 分享連結 (收訊者無介面)</button>
-            <button class="btn upload-btn" id="uploadBtn">📂 上傳 GLB</button>
+            <button class="btn share-btn" id="shareBtn">🔗 分享驚喜連結</button>
         </div>
     </div>
 </div>
-
-<input type="file" id="real-file" accept=".glb,.gltf" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -55,32 +48,31 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    let scene, camera, renderer, controls, snowSystem;
+    let scene, camera, renderer, controls, snowSystem, duck;
     let charGroups = [], snowVelocities = [];
     let isMoving = false, moveTimer = 0;
-    const globeY = 1.6;
-    const globeRadius = 1.48; // 雪花運動半徑，略小於球體幾何
+    const globeY = 1.6, globeRadius = 1.45;
 
     function init() {
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(window.devicePixelRatio);
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
         camera.position.set(0, 3, 6);
         controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
         controls.target.set(0, globeY, 0);
+        controls.enableDamping = true;
         controls.addEventListener('change', () => { isMoving = true; moveTimer = 30; });
 
         scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        const sun = new THREE.DirectionalLight(0xffffff, 1);
         sun.position.set(5, 10, 5);
         scene.add(sun);
 
-        // 水晶球玻璃
+        // 水晶球
         const globe = new THREE.Mesh(
             new THREE.SphereGeometry(1.5, 32, 32),
             new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15 })
@@ -88,19 +80,19 @@
         globe.position.y = globeY;
         scene.add(globe);
 
-        // 雪花初始化
+        // 雪花
         const snowGeo = new THREE.BufferGeometry();
         const posArr = [];
-        for (let i = 0; i < 1000; i++) {
+        for (let i = 0; i < 800; i++) {
             posArr.push((Math.random()-0.5)*2, 0.3, (Math.random()-0.5)*2);
             snowVelocities.push(new THREE.Vector3(0,0,0));
         }
         snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
-        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.8 }));
+        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
 
         updateText();
-        loadModel(document.getElementById('modelSelect').value);
+        loadDuck();
         animate();
     }
 
@@ -113,92 +105,67 @@
             const canvas = document.createElement('canvas');
             canvas.width = 128; canvas.height = 128;
             const ctx = canvas.getContext('2d');
-            ctx.fillStyle = color;
-            ctx.font = 'bold 90px sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = color; ctx.font = 'bold 90px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(char, 64, 64);
             const tex = new THREE.CanvasTexture(canvas);
             const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthTest: false });
             const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
-            const g = new THREE.Group();
-            g.add(mesh);
-            g.renderOrder = 999;
-            scene.add(g);
-            charGroups.push(g);
+            const g = new THREE.Group(); g.add(mesh); g.renderOrder = 999;
+            scene.add(g); charGroups.push(g);
         });
     }
 
-    function loadModel(url) {
-        new GLTFLoader().load(url, (gltf) => {
-            if (window.duck) scene.remove(window.duck);
-            window.duck = gltf.scene;
-            const box = new THREE.Box3().setFromObject(window.duck);
-            const center = box.getCenter(new THREE.Vector3());
-            const scale = 1.0 / box.getSize(new THREE.Vector3()).length() * 1.5;
-            window.duck.scale.setScalar(scale);
-            window.duck.position.set(-center.x*scale, globeY - center.y*scale, -center.z*scale);
-            scene.add(window.duck);
+    function loadDuck() {
+        new GLTFLoader().load('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb', (gltf) => {
+            duck = gltf.scene;
+            duck.scale.setScalar(0.8);
+            duck.position.y = 1.1;
+            scene.add(duck);
         });
     }
 
     function animate() {
         requestAnimationFrame(animate);
         const pos = snowSystem.geometry.attributes.position.array;
-        for (let i = 0; i < 1000; i++) {
+        for (let i = 0; i < 800; i++) {
             const ix = i*3, iy = i*3+1, iz = i*3+2;
-            
-            // 移動時噴發
             if (isMoving && Math.random() > 0.9) {
-                this.snowVelocities[i].add(new THREE.Vector3((Math.random()-0.5)*0.01, Math.random()*0.02, (Math.random()-0.5)*0.01));
+                snowVelocities[i].add(new THREE.Vector3((Math.random()-0.5)*0.01, Math.random()*0.02, (Math.random()-0.5)*0.01));
             }
-
-            pos[ix] += snowVelocities[i].x;
-            pos[iy] += snowVelocities[i].y;
-            pos[iz] += snowVelocities[i].z;
-            
+            pos[ix] += snowVelocities[i].x; pos[iy] += snowVelocities[i].y; pos[iz] += snowVelocities[i].z;
             snowVelocities[i].y -= 0.0008; // 重力
             snowVelocities[i].multiplyScalar(0.98); // 阻力
-
-            // 邊界硬性判定
+            
+            // 球體邊界硬性修正
             const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
             if (dist > globeRadius) {
                 const ratio = globeRadius / dist;
-                // 強制重設座標到球內
-                pos[ix] *= ratio;
-                pos[iy] = globeY + (dy * ratio);
-                pos[iz] *= ratio;
-                // 反向彈回並大幅減速
-                snowVelocities[i].reflect(new THREE.Vector3(dx/dist, dy/dist, dz/dist)).multiplyScalar(0.3);
+                pos[ix] *= ratio; pos[iy] = globeY + (dy * ratio); pos[iz] *= ratio;
+                snowVelocities[i].multiplyScalar(-0.2); // 反向微彈
             }
-
-            if (pos[iy] < 0.25) { pos[iy] = 0.25; snowVelocities[i].set(0,0,0); }
+            if (pos[iy] < 0.3) { pos[iy] = 0.3; snowVelocities[i].set(0,0,0); }
         }
         snowSystem.geometry.attributes.position.needsUpdate = true;
         if (moveTimer > 0) moveTimer--; else isMoving = false;
 
-        const time = Date.now() * 0.0012;
+        const time = Date.now() * 0.001;
         charGroups.forEach((g, i) => {
             const angle = time - (i / charGroups.length) * Math.PI * 2;
-            g.position.set(Math.cos(angle)*1.44, globeY, Math.sin(angle)*1.44);
+            g.position.set(Math.cos(angle)*1.43, globeY, Math.sin(angle)*1.43);
             g.lookAt(0, globeY, 0); g.rotateY(Math.PI);
         });
-        if (window.duck) window.duck.rotation.y += 0.005;
+        if (duck) duck.rotation.y += 0.005;
         controls.update();
         renderer.render(scene, camera);
     }
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
-    document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
-    document.getElementById('real-file').onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) loadModel(URL.createObjectURL(file));
-    };
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
-        window.prompt("請複製下方連結分享：", `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&view=1`);
+        window.prompt("連結已複製:", `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&view=1`);
     };
 
     if (new URLSearchParams(window.location.search).get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');

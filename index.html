@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Ultimate Showcase</title>
+    <title>3D Globe | Live Sync</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -31,9 +31,9 @@
 <div id="canvas-container"></div>
 <div id="app-ui">
     <div class="ui-content">
-        <div id="statusHint" class="hint-text">正在偵測 GitHub 模型目錄...</div>
+        <div id="statusHint" class="hint-text">正在同步 GitHub 景點目錄...</div>
         <div class="ui-row">
-            <select id="modelSelect"><option value="">-- 選擇目錄模型 --</option></select>
+            <select id="modelSelect"><option value="">-- 請選擇地標 --</option></select>
             <button class="btn mode-btn" id="toggleAutoBtn">🔄 輪播 OFF</button>
         </div>
         <div class="ui-row">
@@ -64,10 +64,10 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    // --- 配置您的 GitHub 資訊 ---
-    const githubUser = 'kuochili-ops'; // 您的 GitHub 帳號
-    const githubRepo = 'kuochili-ops.github.io'; // 您的 Repository 名稱
-    const modelFolderPath = 'model'; // 模型存放的資料夾名稱
+    // 針對您的儲存庫路徑進行硬編碼優化
+    const githubUser = 'kuochili-ops';
+    const githubRepo = '3d_globe'; 
+    const modelFolderPath = 'model';
 
     let scene, camera, renderer, controls, snowSystem, currentModel;
     let charGroups = [], snowVelocities = [];
@@ -87,10 +87,8 @@
     async function init() {
         setupScene();
         setupGlobeAndSnow();
-        
-        await fetchGithubModels(); // 1. 自動搜尋目錄
+        await fetchGithubModels();
 
-        // 參數恢復
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
         if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
@@ -98,14 +96,13 @@
         
         updateText();
 
-        const startModel = urlParams.get('m');
-        if (startModel) {
-            loadModel(startModel);
-            document.getElementById('modelSelect').value = startModel;
+        const startModelUrl = urlParams.get('m');
+        if (startModelUrl) {
+            loadModel(decodeURIComponent(startModelUrl));
+            document.getElementById('modelSelect').value = decodeURIComponent(startModelUrl);
         } else if (modelPlaylist.length > 0) {
             loadModel(modelPlaylist[0].url);
-        } else {
-            loadModel('https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb');
+            document.getElementById('modelSelect').value = modelPlaylist[0].url;
         }
 
         if (urlParams.get('auto') === '1') startAutoMode();
@@ -120,22 +117,20 @@
             const select = document.getElementById('modelSelect');
             
             modelPlaylist = files
-                .filter(file => file.name.endsWith('.glb') || file.name.endsWith('.gltf'))
+                .filter(file => file.name.toLowerCase().endsWith('.glb') || file.name.toLowerCase().endsWith('.gltf'))
                 .map(file => ({ name: file.name, url: file.download_url }));
 
             if (modelPlaylist.length > 0) {
-                document.getElementById('statusHint').innerText = `已發現 ${modelPlaylist.length} 個地標模型`;
+                document.getElementById('statusHint').innerText = `已同步 ${modelPlaylist.length} 個地標`;
                 modelPlaylist.forEach(m => {
                     const opt = document.createElement('option');
                     opt.value = m.url;
                     opt.innerText = m.name;
                     select.appendChild(opt);
                 });
-            } else {
-                document.getElementById('statusHint').innerText = "model 目錄中沒有 .glb 檔案";
             }
         } catch (e) {
-            document.getElementById('statusHint').innerText = "無法讀取 GitHub 目錄，請確認路徑設定";
+            document.getElementById('statusHint').innerText = "GitHub 同步失敗，改用手動模式";
         }
     }
 
@@ -151,6 +146,9 @@
         controls.target.set(0, globeY, 0);
         controls.enableDamping = true;
         scene.add(new THREE.AmbientLight(0xffffff, 3.2));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5, 10, 5);
+        scene.add(sun);
     }
 
     function setupGlobeAndSnow() {
@@ -161,12 +159,12 @@
         globe.position.y = globeY;
         scene.add(globe);
 
-        const snowGeo = new THREE.BufferGeometry();
         const posArr = [];
         for (let i = 0; i < 700; i++) {
             posArr.push((Math.random()-0.5)*2.5, 0.3, (Math.random()-0.5)*2.5);
             snowVelocities.push(new THREE.Vector3(0,0,0));
         }
+        const snowGeo = new THREE.BufferGeometry();
         snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
         snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02 }));
         scene.add(snowSystem);
@@ -194,9 +192,8 @@
         autoTimer = setInterval(() => {
             if (modelPlaylist.length === 0) return;
             currentIdx = (currentIdx + 1) % modelPlaylist.length;
-            const targetUrl = modelPlaylist[currentIdx].url;
-            loadModel(targetUrl);
-            document.getElementById('modelSelect').value = targetUrl;
+            loadModel(modelPlaylist[currentIdx].url);
+            document.getElementById('modelSelect').value = modelPlaylist[currentIdx].url;
         }, 60000);
     }
 
@@ -263,16 +260,10 @@
         renderer.render(scene, camera);
     }
 
-    // 事件監聽
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
-    document.getElementById('modelSelect').onchange = (e) => {
-        stopAutoMode();
-        loadModel(e.target.value);
-    };
-    document.getElementById('toggleAutoBtn').onclick = () => {
-        if (isAutoMode) stopAutoMode(); else startAutoMode();
-    };
+    document.getElementById('modelSelect').onchange = (e) => { stopAutoMode(); loadModel(e.target.value); };
+    document.getElementById('toggleAutoBtn').onclick = () => { if (isAutoMode) stopAutoMode(); else startAutoMode(); };
     document.getElementById('uploadBtn').onclick = () => document.getElementById('real-file').click();
     document.getElementById('real-file').onchange = (e) => {
         const file = e.target.files[0];
@@ -286,7 +277,7 @@
         const m = encodeURIComponent(document.getElementById('modelSelect').value);
         const a = isAutoMode ? 1 : 0;
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&s=${s}&h=${h}&m=${m}&auto=${a}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 分享連結已複製！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 分享連結已複製！已鎖定目前選取的模型。"));
     };
     init();
 </script>

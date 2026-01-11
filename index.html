@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Vivid Photo V59</title>
+    <title>3D Globe | Ultimate Fix V60</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -48,7 +48,7 @@
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">影像畫質強化中...</div>
+    <div id="loading-text">檔案解析中...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -72,13 +72,13 @@
             <input type="range" id="speedRange" min="0" max="100" value="50" style="flex:2;">
         </div>
         <div class="ui-row">
-            <button class="btn upload-btn" id="uploadBtn">📂 上傳照片/模型</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳檔案 (模型/照片)</button>
             <button class="btn share-btn" id="shareBtn">🔗 複製分享連結</button>
         </div>
     </div>
 </div>
 
-<input type="file" id="fileInput" accept=".glb,.gltf,.jpg,.jpeg,.png" style="display:none;">
+<input type="file" id="fileInput" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -94,6 +94,8 @@
     let textRotation = 0, isInteracting = false, interactTimer = 0;
     const globeY = 1.6, targetModelSize = 2.4;
     let modelPlaylist = [], currentIdx = 0, isAutoMode = false, autoTimer = null;
+
+    init();
 
     async function init() {
         setupScene();
@@ -111,9 +113,9 @@
 
         const mParam = urlParams.get('m');
         if (mParam) {
-            loadModel(decodeURIComponent(mParam));
+            loadModel(decodeURIComponent(mParam), false);
         } else if(modelPlaylist.length > 0) {
-            loadModel(modelPlaylist[0].url);
+            loadModel(modelPlaylist[0].url, false);
         }
 
         animate();
@@ -126,7 +128,6 @@
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        // 強制輸出色彩空間
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
         
@@ -160,56 +161,42 @@
         scene.add(snowSystem);
     }
 
-    function loadModel(url) {
+    // --- 修改：增加 isImageFile 參數輔助判斷 ---
+    function loadModel(url, isImageFile = false) {
         if (!url) return;
         const overlay = document.getElementById('loading-overlay');
         const progress = document.getElementById('loader-progress');
         overlay.style.display = 'flex';
-        progress.style.width = '15%';
+        progress.style.width = '10%';
         
+        // 清理場景
         if (currentModel) {
             scene.remove(currentModel);
-            currentModel.traverse(node => {
-                if (node.isMesh) {
-                    node.geometry.dispose();
-                    if (Array.isArray(node.material)) node.material.forEach(m => m.dispose());
-                    else node.material.dispose();
-                }
-            });
+            if (mixer) mixer.stopAllAction();
         }
 
-        const isImage = /\.(jpg|jpeg|png|webp)/i.test(url) || url.startsWith('blob:') || url.startsWith('data:');
-
-        if (isImage) {
+        if (isImageFile) {
+            // 照片處理邏輯
             new THREE.TextureLoader().load(url, (texture) => {
-                // 關鍵：修正色彩空間
                 texture.colorSpace = THREE.SRGBColorSpace;
                 const aspect = texture.image.width / texture.image.height;
                 const h = 2.2, w = h * aspect, depth = 0.15;
-
-                // 側面材質：深色金屬
                 const sideMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
-                // 照片材質：加入自發光 (Emissive) 提升鮮豔度
                 const photoMat = new THREE.MeshStandardMaterial({ 
-                    map: texture, 
-                    emissive: new THREE.Color(0xffffff),
-                    emissiveMap: texture,
-                    emissiveIntensity: 0.15 // 輕微補光，消除灰感
+                    map: texture, emissive: new THREE.Color(0xffffff), emissiveMap: texture, emissiveIntensity: 0.15 
                 });
-
-                const materials = [sideMat, sideMat, sideMat, sideMat, photoMat, photoMat];
                 const geo = new THREE.BoxGeometry(w, h, depth);
-                currentModel = new THREE.Mesh(geo, materials);
+                currentModel = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, photoMat, photoMat]);
                 currentModel.position.y = globeY;
                 scene.add(currentModel);
                 overlay.style.display = 'none';
             }, undefined, () => overlay.style.display = 'none');
         } else {
+            // GLB 模型處理邏輯
             new GLTFLoader().load(url, (gltf) => {
                 currentModel = gltf.scene;
                 currentModel.traverse(node => {
                     if (node.isMesh && node.material) {
-                        // 僅對全白無貼圖模型做微調
                         if (node.material.color && node.material.color.r > 0.95 && !node.material.map) {
                             node.material.color.setHex(0xbbbbbb);
                         }
@@ -221,11 +208,20 @@
                 const scale = targetModelSize / Math.max(size.x, size.y, size.z);
                 currentModel.scale.setScalar(scale);
                 currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
+                
+                if (gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(currentModel);
+                    gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+                } else { mixer = null; }
+
                 scene.add(currentModel);
                 overlay.style.display = 'none';
             }, (xhr) => {
                 progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
-            }, () => overlay.style.display = 'none');
+            }, (err) => {
+                console.error(err);
+                overlay.style.display = 'none';
+            });
         }
     }
 
@@ -255,7 +251,12 @@
     document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
     document.getElementById('fileInput').onchange = (e) => {
         const file = e.target.files[0];
-        if (file) loadModel(URL.createObjectURL(file));
+        if (!file) return;
+
+        const url = URL.createObjectURL(file);
+        // 核心修復：使用檔案 MIME 類型判斷
+        const isImg = file.type.startsWith('image/');
+        loadModel(url, isImg);
     };
 
     function updateText() {
@@ -327,7 +328,7 @@
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
-    document.getElementById('modelSelect').onchange = (e) => loadModel(e.target.value);
+    document.getElementById('modelSelect').onchange = (e) => loadModel(e.target.value, false);
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
@@ -335,10 +336,8 @@
         const h = document.getElementById('heightRange').value;
         const s = document.getElementById('speedRange').value;
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 鮮豔版連結已複製！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 修復版連結已複製！"));
     };
-
-    init();
 </script>
 </body>
 </html>

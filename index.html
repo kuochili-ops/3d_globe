@@ -3,37 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Pro Interface</title>
+    <title>3D Globe | Full Sync</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
         
-        /* Loading Overlay */
         #loading-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 2000;
             display: none; flex-direction: column; justify-content: center; align-items: center;
-            color: #00ffff; font-family: monospace; text-align: center;
+            color: #00ffff; font-family: monospace;
         }
         .loader-bar { width: 220px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
         #loader-progress { width: 0%; height: 100%; background: #00ffff; transition: width 0.2s; }
 
-        /* UI Control Panel */
         #app-ui { 
             position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
             background: rgba(10, 10, 10, 0.95); padding: 0;
             display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
             transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        /* 收合狀態：將 UI 往下推，只留切換按鈕 */
         #app-ui.collapsed { transform: translateY(calc(100% - 40px)); }
         #app-ui.viewer-mode { display: none !important; }
 
-        /* 收合切換鈕 */
         #toggle-panel-btn {
             width: 100%; height: 40px; background: #1a1a1a; color: #00ffff;
             border: none; border-bottom: 1px solid #333; cursor: pointer;
-            font-size: 12px; font-weight: bold; letter-spacing: 2px;
+            font-size: 12px; font-weight: bold;
         }
 
         .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; padding: 12px 0 env(safe-area-inset-bottom); }
@@ -49,13 +45,12 @@
         .share-btn { background: #3b82f6; flex: 1.5; }
         .upload-btn { background: #6366f1; flex: 1; border: 1px solid #818cf8; }
         .mode-btn { background: #10b981; min-width: 90px; }
-        .mode-btn.active { background: #ef4444; }
     </style>
 </head>
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">讀取中...</div>
+    <div id="loading-text">載入中...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -80,7 +75,7 @@
         </div>
         <div class="ui-row">
             <button class="btn upload-btn" id="uploadBtn">📂 自行上傳</button>
-            <button class="btn share-btn" id="shareBtn">🔗 分享連結</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製完整分享連結</button>
         </div>
     </div>
 </div>
@@ -104,7 +99,6 @@
     let charGroups = [], snowVelocities = [], clock = new THREE.Clock();
     let textRotation = 0, isInteracting = false, interactTimer = 0;
     const globeY = 1.6, targetModelSize = 2.4;
-
     let modelPlaylist = [], currentIdx = 0, isAutoMode = false, autoTimer = null;
 
     async function init() {
@@ -113,16 +107,19 @@
         await fetchGithubModels();
 
         const urlParams = new URLSearchParams(window.location.search);
+        
+        // --- 核心改進：參數讀取還原 ---
         if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
+        if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
+        if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
         
         updateText();
 
         const mParam = urlParams.get('m');
         if (mParam) {
             loadModel(decodeURIComponent(mParam));
-            syncIdxFromUrl(decodeURIComponent(mParam));
         } else if(modelPlaylist.length > 0) {
             loadModel(modelPlaylist[0].url);
         }
@@ -142,7 +139,14 @@
         controls.target.set(0, globeY, 0);
         controls.enableDamping = true;
         controls.addEventListener('start', () => { isInteracting = true; interactTimer = 30; });
-        scene.add(new THREE.AmbientLight(0xffffff, 3.5));
+
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+        sun.position.set(5, 10, 5);
+        scene.add(sun);
+        const fill = new THREE.DirectionalLight(0xffffff, 1.0);
+        fill.position.set(-5, 2, 2);
+        scene.add(fill);
     }
 
     function setupGlobeAndSnow() {
@@ -164,6 +168,41 @@
         scene.add(snowSystem);
     }
 
+    function loadModel(url) {
+        if (!url) return;
+        const overlay = document.getElementById('loading-overlay');
+        const progress = document.getElementById('loader-progress');
+        overlay.style.display = 'flex';
+        
+        new GLTFLoader().load(url, (gltf) => {
+            if (currentModel) scene.remove(currentModel);
+            currentModel = gltf.scene;
+            currentModel.traverse((node) => {
+                if (node.isMesh) {
+                    node.material = new THREE.MeshStandardMaterial({
+                        color: 0x999999,
+                        metalness: 0.2,
+                        roughness: 0.6,
+                    });
+                }
+            });
+            const box = new THREE.Box3().setFromObject(currentModel);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const scale = targetModelSize / Math.max(size.x, size.y, size.z);
+            currentModel.scale.setScalar(scale);
+            currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
+            if (gltf.animations?.length) {
+                mixer = new THREE.AnimationMixer(currentModel);
+                gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+            }
+            scene.add(currentModel);
+            overlay.style.display = 'none';
+        }, (xhr) => {
+            if (xhr.lengthComputable) progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
+        });
+    }
+
     async function fetchGithubModels() {
         try {
             const res = await fetch(`https://api.github.com/repos/${githubUser}/${githubRepo}/contents/${modelFolderPath}`);
@@ -181,76 +220,30 @@
         } catch (e) { console.error("API Limit"); }
     }
 
-    function loadModel(url) {
-        if (!url) return;
-        const overlay = document.getElementById('loading-overlay');
-        const progress = document.getElementById('loader-progress');
-        overlay.style.display = 'flex';
-        
-        new GLTFLoader().load(url, (gltf) => {
-            if (currentModel) scene.remove(currentModel);
-            currentModel = gltf.scene;
-            const box = new THREE.Box3().setFromObject(currentModel);
-            const size = box.getSize(new THREE.Vector3());
-            const center = box.getCenter(new THREE.Vector3());
-            const scale = targetModelSize / Math.max(size.x, size.y, size.z);
-            currentModel.scale.setScalar(scale);
-            currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
-            if (gltf.animations?.length) {
-                mixer = new THREE.AnimationMixer(currentModel);
-                gltf.animations.forEach(clip => mixer.clipAction(clip).play());
-            }
-            scene.add(currentModel);
-            overlay.style.display = 'none';
-            document.getElementById('modelSelect').value = url;
-        }, (xhr) => {
-            if (xhr.lengthComputable) progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
-        });
-    }
-
-    // --- 輪播邏輯修復 ---
-    function syncIdxFromUrl(url) {
-        const idx = modelPlaylist.findIndex(m => m.url === url);
-        if (idx !== -1) currentIdx = idx;
-    }
-
-    function toggleAutoMode() {
-        const btn = document.getElementById('toggleAutoBtn');
-        if (isAutoMode) {
-            isAutoMode = false;
-            clearInterval(autoTimer);
-            btn.innerText = "🔄 輪播 OFF";
-            btn.classList.remove('active');
-        } else {
-            if(modelPlaylist.length === 0) return;
-            isAutoMode = true;
-            btn.innerText = "⏹ 輪播 ON";
-            btn.classList.add('active');
-            // 立即設定定時器
-            autoTimer = setInterval(() => {
-                currentIdx = (currentIdx + 1) % modelPlaylist.length;
-                loadModel(modelPlaylist[currentIdx].url);
-            }, 10000); // 10秒換一次，方便測試
-        }
-    }
-
-    // --- UI 收合功能 ---
     document.getElementById('toggle-panel-btn').onclick = function() {
         const ui = document.getElementById('app-ui');
         ui.classList.toggle('collapsed');
         this.innerText = ui.classList.contains('collapsed') ? "▲ 顯示操作介面" : "▼ 隱藏操作介面";
     };
 
+    document.getElementById('toggleAutoBtn').onclick = () => {
+        if (isAutoMode) {
+            isAutoMode = false; clearInterval(autoTimer);
+            document.getElementById('toggleAutoBtn').innerText = "🔄 輪播 OFF";
+        } else {
+            isAutoMode = true;
+            document.getElementById('toggleAutoBtn').innerText = "⏹ 輪播 ON";
+            autoTimer = setInterval(() => {
+                currentIdx = (currentIdx + 1) % modelPlaylist.length;
+                loadModel(modelPlaylist[currentIdx].url);
+            }, 30000);
+        }
+    };
+
     document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
     document.getElementById('fileInput').onchange = (e) => {
         const file = e.target.files[0];
         if (file) loadModel(URL.createObjectURL(file));
-    };
-
-    document.getElementById('toggleAutoBtn').onclick = toggleAutoMode;
-    document.getElementById('modelSelect').onchange = (e) => {
-        loadModel(e.target.value);
-        syncIdxFromUrl(e.target.value);
     };
 
     function updateText() {
@@ -320,12 +313,21 @@
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
+    
+    // --- 核心改進：生成包含高度與速度的完整分享連結 ---
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
         const m = encodeURIComponent(document.getElementById('modelSelect').value);
-        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製！"));
+        const h = document.getElementById('heightRange').value;
+        const s = document.getElementById('speedRange').value;
+        
+        // 拼接 URL 參數：t=文字, c=顏色, m=模型, h=高度, s=速度, view=觀看模式
+        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
+        
+        navigator.clipboard.writeText(url).then(() => {
+            alert("✅ 完整參數分享連結已複製！\n他人開啟後將看到您當前的高度與速度設定。");
+        });
     };
 
     init();

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Original Color & Full Sync</title>
+    <title>3D Globe | 3D Photo Brick</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -12,7 +12,7 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.85); z-index: 2000;
             display: none; flex-direction: column; justify-content: center; align-items: center;
-            color: #00ffff; font-family: monospace; text-align: center;
+            color: #00ffff; font-family: monospace;
         }
         .loader-bar { width: 220px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
         #loader-progress { width: 0%; height: 100%; background: #00ffff; transition: width 0.2s; }
@@ -50,7 +50,7 @@
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">最佳化模型視覺...</div>
+    <div id="loading-text">正在處理 3D 影像...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -74,13 +74,13 @@
             <input type="range" id="speedRange" min="0" max="100" value="50" style="flex:2;">
         </div>
         <div class="ui-row">
-            <button class="btn upload-btn" id="uploadBtn">📂 自行上傳</button>
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳照片或模型</button>
             <button class="btn share-btn" id="shareBtn">🔗 複製完整分享連結</button>
         </div>
     </div>
 </div>
 
-<input type="file" id="fileInput" accept=".glb,.gltf" style="display:none;">
+<input type="file" id="fileInput" accept=".glb,.gltf,.jpg,.jpeg,.png" style="display:none;">
 
 <script type="importmap">
     { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -138,14 +138,10 @@
         controls.enableDamping = true;
         controls.addEventListener('start', () => { isInteracting = true; interactTimer = 30; });
 
-        // 高動態純白照明系統（50.0 核心）
         scene.add(new THREE.AmbientLight(0xffffff, 1.0));
         const sun = new THREE.DirectionalLight(0xffffff, 1.8);
         sun.position.set(5, 10, 5);
         scene.add(sun);
-        const fill = new THREE.DirectionalLight(0xffffff, 0.8);
-        fill.position.set(-5, 2, 2);
-        scene.add(fill);
     }
 
     function setupGlobeAndSnow() {
@@ -167,55 +163,62 @@
         scene.add(snowSystem);
     }
 
+    // --- 核心改進：支援載入 3D 照片磚 ---
     function loadModel(url) {
         if (!url) return;
         const overlay = document.getElementById('loading-overlay');
-        const progress = document.getElementById('loader-progress');
         overlay.style.display = 'flex';
         
-        new GLTFLoader().load(url, (gltf) => {
-            if (currentModel) scene.remove(currentModel);
-            currentModel = gltf.scene;
+        // 判斷是否為圖片
+        const isImage = /\.(jpg|jpeg|png|webp)/i.test(url) || url.startsWith('data:image');
 
-            // --- 智慧材質處理邏輯 ---
-            currentModel.traverse((node) => {
-                if (node.isMesh) {
-                    // 如果原本的模型沒有貼圖且顏色接近純白 (或是沒有定義材質)
-                    // 我們才微調它，否則保留原色彩。
-                    if (node.material) {
-                        // 讓所有材質都對光線有反應 (Standard)，並保留原有貼圖(map)或顏色
-                        const oldMat = node.material;
-                        node.material = new THREE.MeshStandardMaterial({
-                            map: oldMat.map,
-                            color: oldMat.color,
-                            // 如果顏色太白，稍微降一點點亮感讓陰影出來
-                            metalness: 0.1,
-                            roughness: 0.7
-                        });
-                        
-                        // 專門針對「完全看不出立體感」的白色模型進行補強
-                        if (!oldMat.map && (oldMat.color.r > 0.9 && oldMat.color.g > 0.9 && oldMat.color.b > 0.9)) {
-                            node.material.color.setHex(0xcccccc); // 稍微壓深，立體感才會出來
+        if (isImage) {
+            new THREE.TextureLoader().load(url, (texture) => {
+                if (currentModel) scene.remove(currentModel);
+                
+                // 計算比例
+                const aspect = texture.image.width / texture.image.height;
+                const h = 2.0;
+                const w = h * aspect;
+                const depth = 0.15; // 厚度設定
+
+                // 建立 3D 方塊：[左, 右, 上, 下, 前, 後]
+                const sideMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
+                const photoMat = new THREE.MeshStandardMaterial({ map: texture });
+                
+                const materials = [
+                    sideMat, sideMat, sideMat, sideMat, // 四個側面
+                    photoMat, photoMat // 正反面
+                ];
+
+                const geo = new THREE.BoxGeometry(w, h, depth);
+                currentModel = new THREE.Mesh(geo, materials);
+                currentModel.position.y = globeY;
+                scene.add(currentModel);
+                overlay.style.display = 'none';
+            });
+        } else {
+            // 原有的 GLB 載入邏輯
+            new GLTFLoader().load(url, (gltf) => {
+                if (currentModel) scene.remove(currentModel);
+                currentModel = gltf.scene;
+                currentModel.traverse(node => {
+                    if (node.isMesh && node.material) {
+                        if (node.material.color.r > 0.9 && !node.material.map) {
+                            node.material.color.setHex(0xcccccc);
                         }
                     }
-                }
+                });
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const scale = targetModelSize / Math.max(size.x, size.y, size.z);
+                currentModel.scale.setScalar(scale);
+                currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
+                scene.add(currentModel);
+                overlay.style.display = 'none';
             });
-
-            const box = new THREE.Box3().setFromObject(currentModel);
-            const size = box.getSize(new THREE.Vector3());
-            const center = box.getCenter(new THREE.Vector3());
-            const scale = targetModelSize / Math.max(size.x, size.y, size.z);
-            currentModel.scale.setScalar(scale);
-            currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
-            if (gltf.animations?.length) {
-                mixer = new THREE.AnimationMixer(currentModel);
-                gltf.animations.forEach(clip => mixer.clipAction(clip).play());
-            }
-            scene.add(currentModel);
-            overlay.style.display = 'none';
-        }, (xhr) => {
-            if (xhr.lengthComputable) progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
-        });
+        }
     }
 
     async function fetchGithubModels() {
@@ -239,20 +242,6 @@
         const ui = document.getElementById('app-ui');
         ui.classList.toggle('collapsed');
         this.innerText = ui.classList.contains('collapsed') ? "▲ 顯示操作介面" : "▼ 隱藏操作介面";
-    };
-
-    document.getElementById('toggleAutoBtn').onclick = () => {
-        if (isAutoMode) {
-            isAutoMode = false; clearInterval(autoTimer);
-            document.getElementById('toggleAutoBtn').innerText = "🔄 輪播 OFF";
-        } else {
-            isAutoMode = true;
-            document.getElementById('toggleAutoBtn').innerText = "⏹ 輪播 ON";
-            autoTimer = setInterval(() => {
-                currentIdx = (currentIdx + 1) % modelPlaylist.length;
-                loadModel(modelPlaylist[currentIdx].url);
-            }, 30000);
-        }
     };
 
     document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
@@ -321,7 +310,10 @@
             g.position.set(Math.cos(angle) * dynR, targetY, Math.sin(angle) * dynR);
             g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
         });
-        if (currentModel) currentModel.rotation.y += 0.002;
+
+        // 模型/照片磚 Y 軸自動旋轉
+        if (currentModel) currentModel.rotation.y += 0.005;
+
         controls.update();
         renderer.render(scene, camera);
     }
@@ -329,7 +321,6 @@
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
     document.getElementById('modelSelect').onchange = (e) => loadModel(e.target.value);
-    
     document.getElementById('shareBtn').onclick = () => {
         const t = encodeURIComponent(document.getElementById('textInput').value);
         const c = document.getElementById('colorPicker').value.replace('#','');
@@ -337,7 +328,7 @@
         const h = document.getElementById('heightRange').value;
         const s = document.getElementById('speedRange').value;
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 連結已複製（包含所有色彩與動態設定）"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製連結！"));
     };
 
     init();

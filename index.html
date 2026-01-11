@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Clean Visuals & Full Sync</title>
+    <title>3D Globe | Original Color & Full Sync</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -50,7 +50,7 @@
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">載入中...</div>
+    <div id="loading-text">最佳化模型視覺...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -107,8 +107,6 @@
         await fetchGithubModels();
 
         const urlParams = new URLSearchParams(window.location.search);
-        
-        // 參數還原
         if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
@@ -140,12 +138,12 @@
         controls.enableDamping = true;
         controls.addEventListener('start', () => { isInteracting = true; interactTimer = 30; });
 
-        // --- 回復 50.0 版 純淨白光照明 ---
-        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+        // 高動態純白照明系統（50.0 核心）
+        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.8);
         sun.position.set(5, 10, 5);
         scene.add(sun);
-        const fill = new THREE.DirectionalLight(0xffffff, 1.0);
+        const fill = new THREE.DirectionalLight(0xffffff, 0.8);
         fill.position.set(-5, 2, 2);
         scene.add(fill);
     }
@@ -178,15 +176,28 @@
         new GLTFLoader().load(url, (gltf) => {
             if (currentModel) scene.remove(currentModel);
             currentModel = gltf.scene;
-            
-            // --- 回復 50.0 版 材質強化 (灰色底 + 白光對比) ---
+
+            // --- 智慧材質處理邏輯 ---
             currentModel.traverse((node) => {
                 if (node.isMesh) {
-                    node.material = new THREE.MeshStandardMaterial({
-                        color: 0x999999,
-                        metalness: 0.2,
-                        roughness: 0.6,
-                    });
+                    // 如果原本的模型沒有貼圖且顏色接近純白 (或是沒有定義材質)
+                    // 我們才微調它，否則保留原色彩。
+                    if (node.material) {
+                        // 讓所有材質都對光線有反應 (Standard)，並保留原有貼圖(map)或顏色
+                        const oldMat = node.material;
+                        node.material = new THREE.MeshStandardMaterial({
+                            map: oldMat.map,
+                            color: oldMat.color,
+                            // 如果顏色太白，稍微降一點點亮感讓陰影出來
+                            metalness: 0.1,
+                            roughness: 0.7
+                        });
+                        
+                        // 專門針對「完全看不出立體感」的白色模型進行補強
+                        if (!oldMat.map && (oldMat.color.r > 0.9 && oldMat.color.g > 0.9 && oldMat.color.b > 0.9)) {
+                            node.material.color.setHex(0xcccccc); // 稍微壓深，立體感才會出來
+                        }
+                    }
                 }
             });
 
@@ -326,7 +337,7 @@
         const h = document.getElementById('heightRange').value;
         const s = document.getElementById('speedRange').value;
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製純淨版分享連結！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 連結已複製（包含所有色彩與動態設定）"));
     };
 
     init();

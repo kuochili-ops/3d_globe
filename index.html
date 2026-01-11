@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | 3D Photo Brick</title>
+    <title>3D Globe | Stability V58</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -50,7 +50,7 @@
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">正在處理 3D 影像...</div>
+    <div id="loading-text">正在處理影像...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -75,7 +75,7 @@
         </div>
         <div class="ui-row">
             <button class="btn upload-btn" id="uploadBtn">📂 上傳照片或模型</button>
-            <button class="btn share-btn" id="shareBtn">🔗 複製完整分享連結</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結</button>
         </div>
     </div>
 </div>
@@ -163,44 +163,51 @@
         scene.add(snowSystem);
     }
 
-    // --- 核心改進：支援載入 3D 照片磚 ---
+    // --- 穩定性增強：模型/圖片載入邏輯 ---
     function loadModel(url) {
         if (!url) return;
         const overlay = document.getElementById('loading-overlay');
+        const progress = document.getElementById('loader-progress');
         overlay.style.display = 'flex';
+        progress.style.width = '10%';
         
-        // 判斷是否為圖片
-        const isImage = /\.(jpg|jpeg|png|webp)/i.test(url) || url.startsWith('data:image');
+        // 清理舊模型與釋放材質防止記憶體溢出
+        if (currentModel) {
+            scene.remove(currentModel);
+            currentModel.traverse(node => {
+                if (node.isMesh) {
+                    node.geometry.dispose();
+                    if (Array.isArray(node.material)) node.material.forEach(m => m.dispose());
+                    else node.material.dispose();
+                }
+            });
+        }
+
+        const isImage = /\.(jpg|jpeg|png|webp)/i.test(url) || url.startsWith('blob:') || url.startsWith('data:');
 
         if (isImage) {
             new THREE.TextureLoader().load(url, (texture) => {
-                if (currentModel) scene.remove(currentModel);
-                
-                // 計算比例
                 const aspect = texture.image.width / texture.image.height;
                 const h = 2.0;
                 const w = h * aspect;
-                const depth = 0.15; // 厚度設定
+                const depth = 0.15;
 
-                // 建立 3D 方塊：[左, 右, 上, 下, 前, 後]
-                const sideMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
+                const sideMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7, roughness: 0.3 });
                 const photoMat = new THREE.MeshStandardMaterial({ map: texture });
-                
-                const materials = [
-                    sideMat, sideMat, sideMat, sideMat, // 四個側面
-                    photoMat, photoMat // 正反面
-                ];
+                const materials = [sideMat, sideMat, sideMat, sideMat, photoMat, photoMat];
 
                 const geo = new THREE.BoxGeometry(w, h, depth);
                 currentModel = new THREE.Mesh(geo, materials);
                 currentModel.position.y = globeY;
                 scene.add(currentModel);
                 overlay.style.display = 'none';
+            }, undefined, (err) => {
+                console.error("Image load error", err);
+                overlay.style.display = 'none';
+                alert("圖片載入失敗，請檢查格式或檔案大小。");
             });
         } else {
-            // 原有的 GLB 載入邏輯
             new GLTFLoader().load(url, (gltf) => {
-                if (currentModel) scene.remove(currentModel);
                 currentModel = gltf.scene;
                 currentModel.traverse(node => {
                     if (node.isMesh && node.material) {
@@ -217,6 +224,12 @@
                 currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
                 scene.add(currentModel);
                 overlay.style.display = 'none';
+            }, (xhr) => {
+                progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
+            }, (err) => {
+                console.error("GLB load error", err);
+                overlay.style.display = 'none';
+                alert("模型載入超時或格式錯誤。");
             });
         }
     }
@@ -235,7 +248,7 @@
                 opt.value = m.url; opt.innerText = "☁️ " + m.name;
                 select.appendChild(opt);
             });
-        } catch (e) { console.error("API Limit"); }
+        } catch (e) { }
     }
 
     document.getElementById('toggle-panel-btn').onclick = function() {
@@ -247,7 +260,11 @@
     document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
     document.getElementById('fileInput').onchange = (e) => {
         const file = e.target.files[0];
-        if (file) loadModel(URL.createObjectURL(file));
+        if (file) {
+            // 使用 Blob URL 替代，較為穩定
+            const objectUrl = URL.createObjectURL(file);
+            loadModel(objectUrl);
+        }
     };
 
     function updateText() {
@@ -311,7 +328,6 @@
             g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
         });
 
-        // 模型/照片磚 Y 軸自動旋轉
         if (currentModel) currentModel.rotation.y += 0.005;
 
         controls.update();
@@ -328,7 +344,7 @@
         const h = document.getElementById('heightRange').value;
         const s = document.getElementById('speedRange').value;
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製連結！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 連結已複製！"));
     };
 
     init();

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | V51 Visuals + Full Sync</title>
+    <title>3D Globe | Clean Visuals & Full Sync</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -50,7 +50,7 @@
 <body>
 
 <div id="loading-overlay">
-    <div id="loading-text">正在強化模型立體感...</div>
+    <div id="loading-text">載入中...</div>
     <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
@@ -107,6 +107,8 @@
         await fetchGithubModels();
 
         const urlParams = new URLSearchParams(window.location.search);
+        
+        // 參數還原
         if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
         if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
         if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
@@ -138,20 +140,14 @@
         controls.enableDamping = true;
         controls.addEventListener('start', () => { isInteracting = true; interactTimer = 30; });
 
-        // --- 回復 51.0 版 視覺強化照明 ---
-        scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-
-        const sun = new THREE.DirectionalLight(0xffffff, 2.5);
-        sun.position.set(5, 10, 7);
+        // --- 回復 50.0 版 純淨白光照明 ---
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+        sun.position.set(5, 10, 5);
         scene.add(sun);
-
-        const fill = new THREE.PointLight(0x00ffff, 1.5); // 青色側光
-        fill.position.set(-5, 5, 2);
+        const fill = new THREE.DirectionalLight(0xffffff, 1.0);
+        fill.position.set(-5, 2, 2);
         scene.add(fill);
-
-        const back = new THREE.DirectionalLight(0xff00ff, 1.0); // 紫色背光
-        back.position.set(0, 5, -10);
-        scene.add(back);
     }
 
     function setupGlobeAndSnow() {
@@ -182,17 +178,15 @@
         new GLTFLoader().load(url, (gltf) => {
             if (currentModel) scene.remove(currentModel);
             currentModel = gltf.scene;
-
-            // --- 回復 51.0 版 強制材質強化 ---
+            
+            // --- 回復 50.0 版 材質強化 (灰色底 + 白光對比) ---
             currentModel.traverse((node) => {
                 if (node.isMesh) {
                     node.material = new THREE.MeshStandardMaterial({
-                        color: 0xaaaaaa,
-                        metalness: 0.5,
-                        roughness: 0.3,
+                        color: 0x999999,
+                        metalness: 0.2,
+                        roughness: 0.6,
                     });
-                    node.castShadow = true;
-                    node.receiveShadow = true;
                 }
             });
 
@@ -332,7 +326,7 @@
         const h = document.getElementById('heightRange').value;
         const s = document.getElementById('speedRange').value;
         const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製完整參數連結！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 已複製純淨版分享連結！"));
     };
 
     init();

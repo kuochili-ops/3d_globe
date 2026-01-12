@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Interactive Snow V64</title>
+    <title>3D Globe | Ultimate Stability V64.1</title>
     <style>
         body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
         #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
@@ -95,7 +95,7 @@
     let textRotation = 0, isInteracting = false, interactTimer = 0;
     const globeY = 1.6, targetModelSize = 2.4;
     
-    // 輪播相關變數
+    // 輪播變數
     let modelPlaylist = [], currentIdx = 0, isAutoMode = false, autoTimer = null;
 
     init();
@@ -133,7 +133,6 @@
         controls = new OrbitControls(camera, renderer.domElement);
         controls.target.set(0, globeY, 0);
         controls.enableDamping = true;
-        // 互動觸發雪花吹起
         controls.addEventListener('start', () => { isInteracting = true; interactTimer = 60; });
     
         scene.add(new THREE.AmbientLight(0xffffff, 1.2));
@@ -153,7 +152,7 @@
         const snowCount = 1500; 
         const posArr = [];
         for (let i = 0; i < snowCount; i++) {
-            // 初始在底部形成積雪
+            // 分佈在底部積雪區域
             const r = Math.random() * 1.3;
             const theta = Math.random() * Math.PI * 2;
             posArr.push(r * Math.cos(theta), 0.25 + Math.random() * 0.1, r * Math.sin(theta));
@@ -217,23 +216,24 @@
         } catch (e) { }
     }
 
-    // 輪播按鈕修復邏輯
+    // --- 輪播邏輯修復 ---
     document.getElementById('toggleAutoBtn').onclick = function() {
         isAutoMode = !isAutoMode;
         this.classList.toggle('on', isAutoMode);
         this.innerText = isAutoMode ? "🔄 輪播 ON" : "🔄 輪播 OFF";
-        if (isAutoMode) startAutoCycle();
-        else if (autoTimer) clearTimeout(autoTimer);
+        if (isAutoMode) runAutoCycle();
+        else if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
     };
 
-    function startAutoCycle() {
+    function runAutoCycle() {
         if (!isAutoMode) return;
         autoTimer = setTimeout(() => {
+            if (!isAutoMode) return;
             currentIdx = (currentIdx + 1) % modelPlaylist.length;
             const nextUrl = modelPlaylist[currentIdx].url;
             document.getElementById('modelSelect').value = nextUrl;
             loadModel(nextUrl);
-            startAutoCycle();
+            runAutoCycle();
         }, 8000); 
     }
 
@@ -267,45 +267,33 @@
 
         const pos = snowSystem.geometry.attributes.position.array;
         for (let i = 0; i < snowData.length; i++) {
-            const ix = i*3, iy = i*3+1, iz = i*3+2;
-            const d = snowData[i];
+            const ix = i*3, iy = i*3+1, iz = i*3+2, d = snowData[i];
 
             if (isInteracting) {
-                // --- 吹起模式：雪花快速往上衝 ---
-                if (pos[iy] < 0.35) d.velY = 0.05 + Math.random() * 0.12; // 底部雪花獲得大衝力
-                pos[iy] += d.velY;
-                d.velY *= 0.96; // 空氣阻力
-                
-                // 向上過程中的亂流
-                pos[ix] += (Math.random()-0.5) * 0.04;
-                pos[iz] += (Math.random()-0.5) * 0.04;
+                // 吹起模式
+                if (pos[iy] < 0.35) d.velY = 0.06 + Math.random() * 0.12; 
+                pos[iy] += d.velY; d.velY *= 0.96;
+                pos[ix] += (Math.random()-0.5) * 0.04; pos[iz] += (Math.random()-0.5) * 0.04;
             } else {
-                // --- 自然模式：雪花往下飄 ---
+                // 自然降落模式
                 pos[iy] -= d.baseSpeedY;
                 pos[ix] += Math.sin(time * d.driftSpeed + d.phase) * d.wobble;
                 pos[iz] += Math.cos(time * d.driftSpeed + d.phase) * d.wobble;
             }
 
-            // --- 水晶球物理限制 ---
+            // 球體邊界與積雪
             const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
-            // 頂部碰撞重置或反彈
             if (dist > 1.45) {
                 const ratio = 1.45 / dist;
                 pos[ix] *= ratio; pos[iy] = globeY + (dy * ratio); pos[iz] *= ratio;
-                if (isInteracting) d.velY *= -0.3; // 觸碰球頂時反彈
+                if (isInteracting) d.velY *= -0.3;
             }
-
-            // 底部積雪層邏輯
             if (pos[iy] < 0.25) {
-                pos[iy] = 0.25; // 停在積雪平面
-                if (!isInteracting) {
-                    // 如果沒有互動，隨機讓一些雪花重新從頂部降落，保持畫面動態
-                    if (Math.random() > 0.997) {
-                        const r = Math.random() * 1.2; const th = Math.random() * Math.PI * 2;
-                        pos[ix] = r * Math.cos(th); pos[iy] = globeY + 1.4; pos[iz] = r * Math.sin(th);
-                    }
+                pos[iy] = 0.25; 
+                if (!isInteracting && Math.random() > 0.997) {
+                    const r = Math.random() * 1.2; const th = Math.random() * Math.PI * 2;
+                    pos[ix] = r * Math.cos(th); pos[iy] = globeY + 1.4; pos[iz] = r * Math.sin(th);
                 }
             }
         }
@@ -326,10 +314,10 @@
 
     document.getElementById('textInput').oninput = updateText;
     document.getElementById('colorPicker').oninput = updateText;
-    document.getElementById('modelSelect').onchange = (e) => loadModel(e.target.value, false);
+    document.getElementById('modelSelect').onchange = (e) => { if(e.target.value) loadModel(e.target.value, false); };
     document.getElementById('shareBtn').onclick = () => {
         const url = `${window.location.origin}${window.location.pathname}?t=${encodeURIComponent(document.getElementById('textInput').value)}&c=${document.getElementById('colorPicker').value.replace('#','')}&m=${encodeURIComponent(document.getElementById('modelSelect').value)}&h=${document.getElementById('heightRange').value}&s=${document.getElementById('speedRange').value}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 互動雪景修復版已複製！"));
+        navigator.clipboard.writeText(url).then(() => alert("✅ 穩定版連結已複製！"));
     };
 </script>
 </body>

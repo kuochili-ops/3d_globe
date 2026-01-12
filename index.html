@@ -3,31 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI 3D Model & Natural Snow Module</title>
+    <title>3D Crystal Ball - Natural Snow Edition</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
-        }
-        canvas { display: block; }
-        
-        #ui-overlay {
+        body { margin: 0; overflow: hidden; background: #050505; }
+        #ui-layer {
             position: absolute;
-            top: 20px;
-            left: 20px;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
             color: white;
-            font-family: sans-serif;
+            font-family: "Microsoft JhengHei", sans-serif;
             pointer-events: none;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
         }
     </style>
 </head>
 <body>
 
-<div id="ui-overlay">
-    <h2>Natural Snow & 3D Module</h2>
-    <p>雪花已調整為隨機漂浮模式</p>
+<div id="ui-layer">
+    <h1>3D 水晶球展示</h1>
+    <p>拖曳旋轉 • 滾輪縮放</p>
 </div>
 
 <script type="importmap">
@@ -41,125 +36,132 @@
 
 <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    // --- 模組設定 ---
-    const config = {
-        snowCount: 2000,        // 增加雪花數量
-        minSpeed: 0.02,         // 最小下落速度
-        maxSpeed: 0.08,         // 最大下落速度
-        windIntensity: 0.02,    // 風力隨機強度
-        wobbleSpeed: 0.03       // 左右搖擺頻率
-    };
-
-    // --- 場景初始化 ---
+    // --- 初始化場景 ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 2, 5);
+    camera.position.set(0, 1, 4);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
     document.body.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
 
-    // 燈光
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    // --- 燈光配置 ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-    dirLight.position.set(5, 5, 5);
-    scene.add(dirLight);
+    const pointLight = new THREE.PointLight(0xffffff, 15);
+    pointLight.position.set(2, 3, 2);
+    scene.add(pointLight);
 
-    // --- 自然雪花系統模組 ---
-    function createSnow() {
-        const geometry = new THREE.BufferGeometry();
-        const positions = [];
-        const velocities = [];
-        const phases = []; // 用於記錄每片雪花的隨機相位（搖擺用）
+    // --- 水晶球外殼模組 ---
+    function createCrystalBall() {
+        const ballGroup = new THREE.Group();
 
-        for (let i = 0; i < config.snowCount; i++) {
-            positions.push(
-                (Math.random() - 0.5) * 20, // X
-                Math.random() * 20,         // Y
-                (Math.random() - 0.5) * 20  // Z
-            );
-            
-            velocities.push(
-                (Math.random() - 0.5) * config.windIntensity, // 初始隨機橫向風速
-                config.minSpeed + Math.random() * (config.maxSpeed - config.minSpeed), // 垂直速度
-                (Math.random() - 0.5) * config.windIntensity  // 深度隨機速度
-            );
-
-            phases.push(Math.random() * Math.PI * 2);
-        }
-
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        
-        // 雪花貼圖 (使用簡單圓點)
-        const canvas = document.createElement('canvas');
-        canvas.width = 32; canvas.height = 32;
-        const ctx = canvas.getContext('2d');
-        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-        grad.addColorStop(0, 'rgba(255,255,255,1)');
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 32, 32);
-        const texture = new THREE.CanvasTexture(canvas);
-
-        const material = new THREE.PointsMaterial({
-            size: 0.05,
-            map: texture,
+        // 外層透明玻璃
+        const glassGeom = new THREE.SphereGeometry(2, 64, 64);
+        const glassMat = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            metalness: 0,
+            roughness: 0,
+            transmission: 0.95,
+            thickness: 0.5,
             transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false
+            opacity: 0.3,
+            envMapIntensity: 1.5
         });
+        const glassSphere = new THREE.Mesh(glassGeom, glassMat);
+        ballGroup.add(glassSphere);
 
-        const points = new THREE.Points(geometry, material);
-        scene.add(points);
+        // 底座
+        const baseGeom = new THREE.CylinderGeometry(1.2, 1.5, 0.5, 32);
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
+        const base = new THREE.Mesh(baseGeom, baseMat);
+        base.position.y = -1.8;
+        ballGroup.add(base);
 
-        return { points, velocities, phases };
+        scene.add(ballGroup);
+        return ballGroup;
     }
 
-    const snowSystem = createSnow();
+    createCrystalBall();
 
-    // --- 動畫迴圈 ---
+    // --- 升級版：自然隨機雪花模式 ---
+    const snowCount = 1500;
+    const snowGeometry = new THREE.BufferGeometry();
+    const snowPositions = new Float32Array(snowCount * 3);
+    const snowData = []; // 儲存每片雪花的物理特徵
+
+    for (let i = 0; i < snowCount; i++) {
+        // 在球體範圍內隨機分佈
+        const r = Math.random() * 1.8;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.random() * Math.PI;
+
+        snowPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        snowPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        snowPositions[i * 3 + 2] = r * Math.cos(phi);
+
+        snowData.push({
+            speedY: 0.005 + Math.random() * 0.015,  // 下落速度
+            drift: Math.random() * 0.02,           // 隨機漂移量
+            phase: Math.random() * Math.PI * 2,    // 擺動初始相位
+            wobble: 0.002 + Math.random() * 0.005  // 左右晃動幅度
+        });
+    }
+
+    snowGeometry.setAttribute('position', new THREE.BufferAttribute(snowPositions, 3));
+    const snowMaterial = new THREE.PointsMaterial({
+        color: 0xffffff,
+        size: 0.025,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending
+    });
+
+    const snowPoints = new THREE.Points(snowGeometry, snowMaterial);
+    scene.add(snowPoints);
+
+    // --- 動畫邏輯 ---
     function animate() {
         requestAnimationFrame(animate);
-        
-        // 更新雪花位置
-        const posAttr = snowSystem.points.geometry.attributes.position;
         const time = Date.now() * 0.001;
 
-        for (let i = 0; i < config.snowCount; i++) {
-            let x = posAttr.getX(i);
-            let y = posAttr.getY(i);
-            let z = posAttr.getZ(i);
+        const positions = snowPoints.geometry.attributes.position.array;
+        for (let i = 0; i < snowCount; i++) {
+            const idx = i * 3;
+            const data = snowData[i];
 
-            // 垂直下落
-            y -= snowSystem.velocities[i * 3 + 1];
+            // 1. 垂直下落
+            positions[idx + 1] -= data.speedY;
 
-            // 增加左右搖擺 (Wobble) 與 隨機飄移 (Drift)
-            const phase = snowSystem.phases[i];
-            x += Math.sin(time + phase) * config.wobbleSpeed;
-            z += Math.cos(time + phase) * config.wobbleSpeed;
+            // 2. 增加隨機擾動 (漂浮感關鍵)
+            positions[idx] += Math.sin(time + data.phase) * data.wobble;
+            positions[idx + 2] += Math.cos(time + data.phase) * data.wobble;
 
-            // 加上基礎的微弱風向偏移
-            x += snowSystem.velocities[i * 3];
-            z += snowSystem.velocities[i * 3 + 2];
+            // 3. 水晶球邊界偵測 (當掉到底部或超出球體，重置到頂部)
+            const dist = Math.sqrt(
+                positions[idx]**2 + 
+                positions[idx+1]**2 + 
+                positions[idx+2]**2
+            );
 
-            // 邊界重置
-            if (y < -5) {
-                y = 15;
-                x = (Math.random() - 0.5) * 20;
-                z = (Math.random() - 0.5) * 20;
+            if (positions[idx + 1] < -1.7 || dist > 1.9) {
+                // 重置到球體上半部
+                const r = Math.random() * 1.5;
+                const theta = Math.random() * Math.PI * 2;
+                positions[idx] = r * Math.cos(theta);
+                positions[idx + 1] = 1.5 + Math.random() * 0.3;
+                positions[idx + 2] = r * Math.sin(theta);
             }
-
-            posAttr.setXYZ(i, x, y, z);
         }
-        posAttr.needsUpdate = true;
+        snowPoints.geometry.attributes.position.needsUpdate = true;
 
         controls.update();
         renderer.render(scene, camera);
@@ -167,19 +169,22 @@
 
     animate();
 
-    // 視窗縮放處理
+    // 視窗自適應
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // --- 載入 GLB 模型 (範例佔位) ---
-    // 你可以將路徑替換成從 TRELLIS 或 UltraShape 生成的 URL
+    // --- 載入模型功能預留 (保持原功能) ---
+    // 你可以將產生的 GLB URL 填入此處
     /*
     const loader = new GLTFLoader();
-    loader.load('YOUR_MODEL_URL.glb', (gltf) => {
-        scene.add(gltf.scene);
+    loader.load('YOUR_MODEL_LINK.glb', (gltf) => {
+        const model = gltf.scene;
+        model.scale.set(0.5, 0.5, 0.5);
+        model.position.y = -1.5; // 放在底座上
+        scene.add(model);
     });
     */
 

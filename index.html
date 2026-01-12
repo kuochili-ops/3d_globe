@@ -1,37 +1,87 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Crystal Ball - Natural Snow Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>3D Globe | Ultimate Fix V61 - Natural Snow</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050505; }
-        #ui-layer {
-            position: absolute;
-            bottom: 30px;
-            width: 100%;
-            text-align: center;
-            color: white;
-            font-family: "Microsoft JhengHei", sans-serif;
-            pointer-events: none;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        #loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 2000;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
+            color: #00ffff; font-family: monospace;
         }
+        .loader-bar { width: 220px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
+        #loader-progress { width: 0%; height: 100%; background: #00ffff; transition: width 0.2s; }
+
+        #app-ui { 
+            position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
+            background: rgba(10, 10, 10, 0.95); padding: 0;
+            display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #app-ui.collapsed { transform: translateY(calc(100% - 40px)); }
+        #app-ui.viewer-mode { display: none !important; }
+
+        #toggle-panel-btn {
+            width: 100%; height: 40px; background: #1a1a1a; color: #00ffff;
+            border: none; border-bottom: 1px solid #333; cursor: pointer; font-size: 12px; font-weight: bold;
+        }
+
+        .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; padding: 12px 0 env(safe-area-inset-bottom); }
+        .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
+        
+        input, select, button { 
+            background: #000; border: 1px solid #00ffff; color: #fff; padding: 10px; border-radius: 6px; font-size: 13px; outline: none;
+        }
+        select, input[type="text"] { flex: 1; }
+        .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; }
+        .btn { font-weight: bold; border: none; cursor: pointer; color: white; transition: 0.2s; }
+        .share-btn { background: #3b82f6; flex: 1.5; }
+        .upload-btn { background: #6366f1; flex: 1; border: 1px solid #818cf8; }
+        .mode-btn { background: #10b981; min-width: 90px; }
     </style>
 </head>
 <body>
 
-<div id="ui-layer">
-    <h1>3D 水晶球展示</h1>
-    <p>拖曳旋轉 • 滾輪縮放</p>
+<div id="loading-overlay">
+    <div id="loading-text">檔案解析中...</div>
+    <div class="loader-bar"><div id="loader-progress"></div></div>
 </div>
 
+<div id="canvas-container"></div>
+
+<div id="app-ui">
+    <button id="toggle-panel-btn">▼ 隱藏操作介面</button>
+    <div class="ui-content">
+        <div class="ui-row">
+            <select id="modelSelect"><option value="">-- 雲端景點 --</option></select>
+            <button class="btn mode-btn" id="toggleAutoBtn">🔄 輪播 OFF</button>
+        </div>
+        <div class="ui-row">
+            <input type="text" id="textInput" value="環遊世界吃一口">
+            <input type="color" id="colorPicker" value="#00ffff" style="width:45px; padding:0; border:none;">
+        </div>
+        <div class="ui-row">
+            <span class="label">高度</span>
+            <input type="range" id="heightRange" min="50" max="280" value="160" style="flex:2;">
+            <span class="label">速度</span>
+            <input type="range" id="speedRange" min="0" max="100" value="50" style="flex:2;">
+        </div>
+        <div class="ui-row">
+            <button class="btn upload-btn" id="uploadBtn">📂 上傳檔案 (模型/照片)</button>
+            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結</button>
+        </div>
+    </div>
+</div>
+
+<input type="file" id="fileInput" style="display:none;">
+
 <script type="importmap">
-    {
-        "imports": {
-            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-        }
-    }
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
 </script>
 
 <script type="module">
@@ -39,155 +89,243 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    // --- 初始化場景 ---
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 1, 4);
+    let scene, camera, renderer, controls, snowSystem, currentModel, mixer;
+    let charGroups = [], snowData = [], clock = new THREE.Clock();
+    let textRotation = 0, isInteracting = false, interactTimer = 0;
+    const globeY = 1.6, targetModelSize = 2.4;
+    let modelPlaylist = [], currentIdx = 0, isAutoMode = false;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    document.body.appendChild(renderer.domElement);
+    init();
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+    async function init() {
+        setupScene();
+        setupGlobeAndSnow();
+        await fetchGithubModels();
 
-    // --- 燈光配置 ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-    const pointLight = new THREE.PointLight(0xffffff, 15);
-    pointLight.position.set(2, 3, 2);
-    scene.add(pointLight);
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
+        if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
+        if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
+        if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
+        if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
+        
+        updateText();
 
-    // --- 水晶球外殼模組 ---
-    function createCrystalBall() {
-        const ballGroup = new THREE.Group();
+        const mParam = urlParams.get('m');
+        if (mParam) {
+            loadModel(decodeURIComponent(mParam), false);
+        } else if(modelPlaylist.length > 0) {
+            loadModel(modelPlaylist[0].url, false);
+        }
 
-        // 外層透明玻璃
-        const glassGeom = new THREE.SphereGeometry(2, 64, 64);
-        const glassMat = new THREE.MeshPhysicalMaterial({
-            color: 0xffffff,
-            metalness: 0,
-            roughness: 0,
-            transmission: 0.95,
-            thickness: 0.5,
-            transparent: true,
-            opacity: 0.3,
-            envMapIntensity: 1.5
-        });
-        const glassSphere = new THREE.Mesh(glassGeom, glassMat);
-        ballGroup.add(glassSphere);
-
-        // 底座
-        const baseGeom = new THREE.CylinderGeometry(1.2, 1.5, 0.5, 32);
-        const baseMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
-        const base = new THREE.Mesh(baseGeom, baseMat);
-        base.position.y = -1.8;
-        ballGroup.add(base);
-
-        scene.add(ballGroup);
-        return ballGroup;
+        animate();
     }
 
-    createCrystalBall();
+    function setupScene() {
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 3, 6);
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, globeY, 0);
+        controls.enableDamping = true;
+        controls.addEventListener('start', () => { isInteracting = true; interactTimer = 60; });
 
-    // --- 升級版：自然隨機雪花模式 ---
-    const snowCount = 1500;
-    const snowGeometry = new THREE.BufferGeometry();
-    const snowPositions = new Float32Array(snowCount * 3);
-    const snowData = []; // 儲存每片雪花的物理特徵
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+        sun.position.set(5, 10, 5);
+        scene.add(sun);
+    }
 
-    for (let i = 0; i < snowCount; i++) {
-        // 在球體範圍內隨機分佈
-        const r = Math.random() * 1.8;
-        const theta = Math.random() * Math.PI * 2;
-        const phi = Math.random() * Math.PI;
+    function setupGlobeAndSnow() {
+        // 水晶球外殼
+        const globe = new THREE.Mesh(
+            new THREE.SphereGeometry(1.5, 32, 32),
+            new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15, depthWrite: false })
+        );
+        globe.position.y = globeY;
+        scene.add(globe);
 
-        snowPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-        snowPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-        snowPositions[i * 3 + 2] = r * Math.cos(phi);
+        // 雪花系統
+        const snowCount = 800;
+        const posArr = [];
+        for (let i = 0; i < snowCount; i++) {
+            // 隨機分佈在球體內
+            const r = Math.random() * 1.4;
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.random() * Math.PI;
+            posArr.push(r * Math.sin(phi) * Math.cos(theta), globeY + r * Math.sin(phi) * Math.sin(theta), r * Math.cos(phi));
+            
+            // 物理數據：速度、漂移量、相位、擺動幅度
+            snowData.push({
+                vel: new THREE.Vector3(0, -0.005 - Math.random() * 0.01, 0),
+                phase: Math.random() * Math.PI * 2,
+                wobble: 0.002 + Math.random() * 0.006,
+                baseSpeedY: 0.004 + Math.random() * 0.008
+            });
+        }
+        const snowGeo = new THREE.BufferGeometry();
+        snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
+        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.025, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending }));
+        scene.add(snowSystem);
+    }
 
-        snowData.push({
-            speedY: 0.005 + Math.random() * 0.015,  // 下落速度
-            drift: Math.random() * 0.02,           // 隨機漂移量
-            phase: Math.random() * Math.PI * 2,    // 擺動初始相位
-            wobble: 0.002 + Math.random() * 0.005  // 左右晃動幅度
+    function loadModel(url, isImageFile = false) {
+        if (!url) return;
+        const overlay = document.getElementById('loading-overlay');
+        const progress = document.getElementById('loader-progress');
+        overlay.style.display = 'flex';
+        progress.style.width = '10%';
+        if (currentModel) { scene.remove(currentModel); if (mixer) mixer.stopAllAction(); }
+
+        if (isImageFile) {
+            new THREE.TextureLoader().load(url, (texture) => {
+                texture.colorSpace = THREE.SRGBColorSpace;
+                const aspect = texture.image.width / texture.image.height;
+                const h = 2.2, w = h * aspect, depth = 0.15;
+                const sideMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
+                const photoMat = new THREE.MeshStandardMaterial({ map: texture, emissive: 0xffffff, emissiveIntensity: 0.15 });
+                currentModel = new THREE.Mesh(new THREE.BoxGeometry(w, h, depth), [sideMat, sideMat, sideMat, sideMat, photoMat, photoMat]);
+                currentModel.position.y = globeY;
+                scene.add(currentModel);
+                overlay.style.display = 'none';
+            });
+        } else {
+            new GLTFLoader().load(url, (gltf) => {
+                currentModel = gltf.scene;
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const scale = targetModelSize / Math.max(size.x, size.y, size.z);
+                currentModel.scale.setScalar(scale);
+                currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
+                if (gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(currentModel);
+                    gltf.animations.forEach(clip => mixer.clipAction(clip).play());
+                }
+                scene.add(currentModel);
+                overlay.style.display = 'none';
+            }, (xhr) => { progress.style.width = (xhr.loaded / xhr.total * 100) + '%'; });
+        }
+    }
+
+    async function fetchGithubModels() {
+        try {
+            const res = await fetch(`https://api.github.com/repos/kuochili-ops/3d_globe/contents/model`);
+            const files = await res.json();
+            modelPlaylist = files.filter(f => f.name.toLowerCase().endsWith('.glb')).map(f => ({
+                name: f.name.replace('.glb',''), url: `https://raw.githubusercontent.com/kuochili-ops/3d_globe/main/model/${f.name}`
+            }));
+            const select = document.getElementById('modelSelect');
+            modelPlaylist.forEach(m => {
+                const opt = document.createElement('option'); opt.value = m.url; opt.innerText = "☁️ " + m.name; select.appendChild(opt);
+            });
+        } catch (e) { }
+    }
+
+    function updateText() {
+        const textStr = document.getElementById('textInput').value || " ";
+        const color = document.getElementById('colorPicker').value;
+        charGroups.forEach(g => scene.remove(g));
+        charGroups = [];
+        Array.from(textStr).forEach((char) => {
+            const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = color; ctx.font = 'bold 160px "Microsoft JhengHei"';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(char, 128, 128);
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, side: THREE.DoubleSide, alphaTest: 0.3 }));
+            const g = new THREE.Group(); g.add(mesh); scene.add(g); charGroups.push(g);
         });
     }
 
-    snowGeometry.setAttribute('position', new THREE.BufferAttribute(snowPositions, 3));
-    const snowMaterial = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.025,
-        transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending
-    });
-
-    const snowPoints = new THREE.Points(snowGeometry, snowMaterial);
-    scene.add(snowPoints);
-
-    // --- 動畫邏輯 ---
     function animate() {
         requestAnimationFrame(animate);
+        const delta = clock.getDelta();
         const time = Date.now() * 0.001;
+        if (mixer) mixer.update(delta);
 
-        const positions = snowPoints.geometry.attributes.position.array;
-        for (let i = 0; i < snowCount; i++) {
-            const idx = i * 3;
+        const pos = snowSystem.geometry.attributes.position.array;
+        for (let i = 0; i < snowData.length; i++) {
+            const ix = i*3, iy = i*3+1, iz = i*3+2;
             const data = snowData[i];
 
-            // 1. 垂直下落
-            positions[idx + 1] -= data.speedY;
+            if (isInteracting) {
+                // 互動時：混亂噴發
+                data.vel.x += (Math.random()-0.5)*0.015;
+                data.vel.y += Math.random()*0.025;
+                data.vel.z += (Math.random()-0.5)*0.015;
+            } else {
+                // 平常時：隨機漂浮下落
+                data.vel.y = -data.baseSpeedY;
+                data.vel.x *= 0.95;
+                data.vel.z *= 0.95;
+            }
 
-            // 2. 增加隨機擾動 (漂浮感關鍵)
-            positions[idx] += Math.sin(time + data.phase) * data.wobble;
-            positions[idx + 2] += Math.cos(time + data.phase) * data.wobble;
+            // 套用位移 (基礎下落 + 隨機搖擺)
+            pos[ix] += data.vel.x + Math.sin(time + data.phase) * data.wobble;
+            pos[iy] += data.vel.y;
+            pos[iz] += data.vel.z + Math.cos(time + data.phase) * data.wobble;
 
-            // 3. 水晶球邊界偵測 (當掉到底部或超出球體，重置到頂部)
-            const dist = Math.sqrt(
-                positions[idx]**2 + 
-                positions[idx+1]**2 + 
-                positions[idx+2]**2
-            );
-
-            if (positions[idx + 1] < -1.7 || dist > 1.9) {
-                // 重置到球體上半部
-                const r = Math.random() * 1.5;
+            // 邊界檢查
+            const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
+            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            
+            if (dist > 1.45 || pos[iy] < 0.25) {
+                // 重置到頂部區域隨機點
+                const r = Math.random() * 1.2;
                 const theta = Math.random() * Math.PI * 2;
-                positions[idx] = r * Math.cos(theta);
-                positions[idx + 1] = 1.5 + Math.random() * 0.3;
-                positions[idx + 2] = r * Math.sin(theta);
+                pos[ix] = r * Math.cos(theta);
+                pos[iy] = globeY + 1.2 + Math.random() * 0.2;
+                pos[iz] = r * Math.sin(theta);
+                data.vel.set(0, -data.baseSpeedY, 0);
             }
         }
-        snowPoints.geometry.attributes.position.needsUpdate = true;
+        snowSystem.geometry.attributes.position.needsUpdate = true;
+        if (interactTimer > 0) interactTimer--; else isInteracting = false;
 
+        // 文字旋轉邏輯
+        const speed = document.getElementById('speedRange').value / 2500;
+        const targetY = document.getElementById('heightRange').value / 100;
+        textRotation += speed;
+        const relY = targetY - globeY, dynR = Math.sqrt(Math.max(0, 1.48*1.48 - relY*relY)) * 0.97;
+        charGroups.forEach((g, i) => {
+            const angle = textRotation - (i / charGroups.length) * Math.PI * 2;
+            g.position.set(Math.cos(angle) * dynR, targetY, Math.sin(angle) * dynR);
+            g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
+        });
+
+        if (currentModel) currentModel.rotation.y += 0.005;
         controls.update();
         renderer.render(scene, camera);
     }
 
-    animate();
-
-    // 視窗自適應
-    window.addEventListener('resize', () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // --- 載入模型功能預留 (保持原功能) ---
-    // 你可以將產生的 GLB URL 填入此處
-    /*
-    const loader = new GLTFLoader();
-    loader.load('YOUR_MODEL_LINK.glb', (gltf) => {
-        const model = gltf.scene;
-        model.scale.set(0.5, 0.5, 0.5);
-        model.position.y = -1.5; // 放在底座上
-        scene.add(model);
-    });
-    */
-
+    document.getElementById('toggle-panel-btn').onclick = function() {
+        const ui = document.getElementById('app-ui');
+        ui.classList.toggle('collapsed');
+        this.innerText = ui.classList.contains('collapsed') ? "▲ 顯示操作介面" : "▼ 隱藏操作介面";
+    };
+    document.getElementById('textInput').oninput = updateText;
+    document.getElementById('colorPicker').oninput = updateText;
+    document.getElementById('modelSelect').onchange = (e) => loadModel(e.target.value, false);
+    document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
+    document.getElementById('fileInput').onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) loadModel(URL.createObjectURL(file), file.type.startsWith('image/'));
+    };
+    document.getElementById('shareBtn').onclick = () => {
+        const t = encodeURIComponent(document.getElementById('textInput').value);
+        const c = document.getElementById('colorPicker').value.replace('#','');
+        const m = encodeURIComponent(document.getElementById('modelSelect').value);
+        const h = document.getElementById('heightRange').value;
+        const s = document.getElementById('speedRange').value;
+        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
+        navigator.clipboard.writeText(url).then(() => alert("✅ 分享連結已複製！"));
+    };
 </script>
 </body>
 </html>

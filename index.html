@@ -1,343 +1,188 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D Globe | Ultimate Fix V60</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 3D Model & Natural Snow Module</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; height: 100vh; touch-action: none; }
-        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1b2735 0%, #090a0f 100%);
+        }
+        canvas { display: block; }
         
-        #loading-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); z-index: 2000;
-            display: none; flex-direction: column; justify-content: center; align-items: center;
-            color: #00ffff; font-family: monospace;
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: sans-serif;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
-        .loader-bar { width: 220px; height: 4px; background: #222; margin-top: 15px; border-radius: 2px; overflow: hidden; }
-        #loader-progress { width: 0%; height: 100%; background: #00ffff; transition: width 0.2s; }
-
-        #app-ui { 
-            position: absolute !important; bottom: 0; left: 0; width: 100%; z-index: 1000; 
-            background: rgba(10, 10, 10, 0.95); padding: 0;
-            display: flex; flex-direction: column; align-items: center; border-top: 1px solid #333;
-            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        #app-ui.collapsed { transform: translateY(calc(100% - 40px)); }
-        #app-ui.viewer-mode { display: none !important; }
-
-        #toggle-panel-btn {
-            width: 100%; height: 40px; background: #1a1a1a; color: #00ffff;
-            border: none; border-bottom: 1px solid #333; cursor: pointer; font-size: 12px; font-weight: bold;
-        }
-
-        .ui-content { width: 92%; max-width: 500px; display: flex; flex-direction: column; gap: 8px; padding: 12px 0 env(safe-area-inset-bottom); }
-        .ui-row { display: flex; width: 100%; gap: 6px; align-items: center; }
-        
-        input, select, button { 
-            background: #000; border: 1px solid #00ffff; color: #fff; padding: 10px; border-radius: 6px; font-size: 13px; outline: none;
-        }
-        select, input[type="text"] { flex: 1; }
-        .label { color: #00ffff; font-size: 11px; min-width: 30px; font-weight: bold; }
-        .btn { font-weight: bold; border: none; cursor: pointer; color: white; transition: 0.2s; }
-        .share-btn { background: #3b82f6; flex: 1.5; }
-        .upload-btn { background: #6366f1; flex: 1; border: 1px solid #818cf8; }
-        .mode-btn { background: #10b981; min-width: 90px; }
     </style>
 </head>
 <body>
 
-<div id="loading-overlay">
-    <div id="loading-text">檔案解析中...</div>
-    <div class="loader-bar"><div id="loader-progress"></div></div>
+<div id="ui-overlay">
+    <h2>Natural Snow & 3D Module</h2>
+    <p>雪花已調整為隨機漂浮模式</p>
 </div>
-
-<div id="canvas-container"></div>
-
-<div id="app-ui">
-    <button id="toggle-panel-btn">▼ 隱藏操作介面</button>
-    <div class="ui-content">
-        <div class="ui-row">
-            <select id="modelSelect"><option value="">-- 雲端景點 --</option></select>
-            <button class="btn mode-btn" id="toggleAutoBtn">🔄 輪播 OFF</button>
-        </div>
-        <div class="ui-row">
-            <input type="text" id="textInput" value="環遊世界吃一口">
-            <input type="color" id="colorPicker" value="#00ffff" style="width:45px; padding:0; border:none;">
-        </div>
-        <div class="ui-row">
-            <span class="label">高度</span>
-            <input type="range" id="heightRange" min="50" max="280" value="160" style="flex:2;">
-            <span class="label">速度</span>
-            <input type="range" id="speedRange" min="0" max="100" value="50" style="flex:2;">
-        </div>
-        <div class="ui-row">
-            <button class="btn upload-btn" id="uploadBtn">📂 上傳檔案 (模型/照片)</button>
-            <button class="btn share-btn" id="shareBtn">🔗 複製分享連結</button>
-        </div>
-    </div>
-</div>
-
-<input type="file" id="fileInput" style="display:none;">
 
 <script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
 </script>
 
 <script type="module">
     import * as THREE from 'three';
-    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    let scene, camera, renderer, controls, snowSystem, currentModel, mixer;
-    let charGroups = [], snowVelocities = [], clock = new THREE.Clock();
-    let textRotation = 0, isInteracting = false, interactTimer = 0;
-    const globeY = 1.6, targetModelSize = 2.4;
-    let modelPlaylist = [], currentIdx = 0, isAutoMode = false, autoTimer = null;
-
-    init();
-
-    async function init() {
-        setupScene();
-        setupGlobeAndSnow();
-        await fetchGithubModels();
-
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('view') === '1') document.getElementById('app-ui').classList.add('viewer-mode');
-        if (urlParams.has('t')) document.getElementById('textInput').value = decodeURIComponent(urlParams.get('t'));
-        if (urlParams.has('c')) document.getElementById('colorPicker').value = '#' + urlParams.get('c');
-        if (urlParams.has('h')) document.getElementById('heightRange').value = urlParams.get('h');
-        if (urlParams.has('s')) document.getElementById('speedRange').value = urlParams.get('s');
-        
-        updateText();
-
-        const mParam = urlParams.get('m');
-        if (mParam) {
-            loadModel(decodeURIComponent(mParam), false);
-        } else if(modelPlaylist.length > 0) {
-            loadModel(modelPlaylist[0].url, false);
-        }
-
-        animate();
-    }
-
-    function setupScene() {
-        scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 3, 6);
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.outputColorSpace = THREE.SRGBColorSpace;
-        document.getElementById('canvas-container').appendChild(renderer.domElement);
-        
-        controls = new OrbitControls(camera, renderer.domElement);
-        controls.target.set(0, globeY, 0);
-        controls.enableDamping = true;
-        controls.addEventListener('start', () => { isInteracting = true; interactTimer = 30; });
-
-        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-        const sun = new THREE.DirectionalLight(0xffffff, 2.0);
-        sun.position.set(5, 10, 5);
-        scene.add(sun);
-    }
-
-    function setupGlobeAndSnow() {
-        const globe = new THREE.Mesh(
-            new THREE.SphereGeometry(1.5, 32, 32),
-            new THREE.MeshPhysicalMaterial({ transmission: 1, thickness: 0.1, transparent: true, opacity: 0.15, depthWrite: false })
-        );
-        globe.position.y = globeY;
-        scene.add(globe);
-
-        const posArr = [];
-        for (let i = 0; i < 600; i++) {
-            posArr.push((Math.random()-0.5)*2.5, 0.5 + Math.random()*2, (Math.random()-0.5)*2.5);
-            snowVelocities.push(new THREE.Vector3(0, -0.005 - Math.random()*0.01, 0));
-        }
-        const snowGeo = new THREE.BufferGeometry();
-        snowGeo.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
-        snowSystem = new THREE.Points(snowGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.02, transparent: true, opacity: 0.8 }));
-        scene.add(snowSystem);
-    }
-
-    // --- 修改：增加 isImageFile 參數輔助判斷 ---
-    function loadModel(url, isImageFile = false) {
-        if (!url) return;
-        const overlay = document.getElementById('loading-overlay');
-        const progress = document.getElementById('loader-progress');
-        overlay.style.display = 'flex';
-        progress.style.width = '10%';
-        
-        // 清理場景
-        if (currentModel) {
-            scene.remove(currentModel);
-            if (mixer) mixer.stopAllAction();
-        }
-
-        if (isImageFile) {
-            // 照片處理邏輯
-            new THREE.TextureLoader().load(url, (texture) => {
-                texture.colorSpace = THREE.SRGBColorSpace;
-                const aspect = texture.image.width / texture.image.height;
-                const h = 2.2, w = h * aspect, depth = 0.15;
-                const sideMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
-                const photoMat = new THREE.MeshStandardMaterial({ 
-                    map: texture, emissive: new THREE.Color(0xffffff), emissiveMap: texture, emissiveIntensity: 0.15 
-                });
-                const geo = new THREE.BoxGeometry(w, h, depth);
-                currentModel = new THREE.Mesh(geo, [sideMat, sideMat, sideMat, sideMat, photoMat, photoMat]);
-                currentModel.position.y = globeY;
-                scene.add(currentModel);
-                overlay.style.display = 'none';
-            }, undefined, () => overlay.style.display = 'none');
-        } else {
-            // GLB 模型處理邏輯
-            new GLTFLoader().load(url, (gltf) => {
-                currentModel = gltf.scene;
-                currentModel.traverse(node => {
-                    if (node.isMesh && node.material) {
-                        if (node.material.color && node.material.color.r > 0.95 && !node.material.map) {
-                            node.material.color.setHex(0xbbbbbb);
-                        }
-                    }
-                });
-                const box = new THREE.Box3().setFromObject(currentModel);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                const scale = targetModelSize / Math.max(size.x, size.y, size.z);
-                currentModel.scale.setScalar(scale);
-                currentModel.position.set(-center.x * scale, globeY - center.y * scale, -center.z * scale);
-                
-                if (gltf.animations.length > 0) {
-                    mixer = new THREE.AnimationMixer(currentModel);
-                    gltf.animations.forEach(clip => mixer.clipAction(clip).play());
-                } else { mixer = null; }
-
-                scene.add(currentModel);
-                overlay.style.display = 'none';
-            }, (xhr) => {
-                progress.style.width = (xhr.loaded / xhr.total * 100) + '%';
-            }, (err) => {
-                console.error(err);
-                overlay.style.display = 'none';
-            });
-        }
-    }
-
-    async function fetchGithubModels() {
-        try {
-            const res = await fetch(`https://api.github.com/repos/kuochili-ops/3d_globe/contents/model`);
-            const files = await res.json();
-            const select = document.getElementById('modelSelect');
-            modelPlaylist = files.filter(f => f.name.toLowerCase().endsWith('.glb')).map(f => ({
-                name: f.name.replace('.glb',''),
-                url: `https://raw.githubusercontent.com/kuochili-ops/3d_globe/main/model/${f.name}`
-            }));
-            modelPlaylist.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m.url; opt.innerText = "☁️ " + m.name;
-                select.appendChild(opt);
-            });
-        } catch (e) { }
-    }
-
-    document.getElementById('toggle-panel-btn').onclick = function() {
-        const ui = document.getElementById('app-ui');
-        ui.classList.toggle('collapsed');
-        this.innerText = ui.classList.contains('collapsed') ? "▲ 顯示操作介面" : "▼ 隱藏操作介面";
+    // --- 模組設定 ---
+    const config = {
+        snowCount: 2000,        // 增加雪花數量
+        minSpeed: 0.02,         // 最小下落速度
+        maxSpeed: 0.08,         // 最大下落速度
+        windIntensity: 0.02,    // 風力隨機強度
+        wobbleSpeed: 0.03       // 左右搖擺頻率
     };
 
-    document.getElementById('uploadBtn').onclick = () => document.getElementById('fileInput').click();
-    document.getElementById('fileInput').onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    // --- 場景初始化 ---
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 2, 5);
 
-        const url = URL.createObjectURL(file);
-        // 核心修復：使用檔案 MIME 類型判斷
-        const isImg = file.type.startsWith('image/');
-        loadModel(url, isImg);
-    };
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
 
-    function updateText() {
-        const textStr = document.getElementById('textInput').value || " ";
-        const color = document.getElementById('colorPicker').value;
-        charGroups.forEach(g => scene.remove(g));
-        charGroups = [];
-        Array.from(textStr).forEach((char) => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 256; canvas.height = 256;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = color; ctx.font = 'bold 160px "Microsoft JhengHei"';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(char, 128, 128);
-            const tex = new THREE.CanvasTexture(canvas);
-            const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, alphaTest: 0.3 });
-            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), mat);
-            const g = new THREE.Group(); g.add(mesh);
-            scene.add(g); charGroups.push(g);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // 燈光
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 5, 5);
+    scene.add(dirLight);
+
+    // --- 自然雪花系統模組 ---
+    function createSnow() {
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        const velocities = [];
+        const phases = []; // 用於記錄每片雪花的隨機相位（搖擺用）
+
+        for (let i = 0; i < config.snowCount; i++) {
+            positions.push(
+                (Math.random() - 0.5) * 20, // X
+                Math.random() * 20,         // Y
+                (Math.random() - 0.5) * 20  // Z
+            );
+            
+            velocities.push(
+                (Math.random() - 0.5) * config.windIntensity, // 初始隨機橫向風速
+                config.minSpeed + Math.random() * (config.maxSpeed - config.minSpeed), // 垂直速度
+                (Math.random() - 0.5) * config.windIntensity  // 深度隨機速度
+            );
+
+            phases.push(Math.random() * Math.PI * 2);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        
+        // 雪花貼圖 (使用簡單圓點)
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        grad.addColorStop(0, 'rgba(255,255,255,1)');
+        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 32, 32);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const material = new THREE.PointsMaterial({
+            size: 0.05,
+            map: texture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
         });
+
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+
+        return { points, velocities, phases };
     }
 
+    const snowSystem = createSnow();
+
+    // --- 動畫迴圈 ---
     function animate() {
         requestAnimationFrame(animate);
-        const delta = clock.getDelta();
-        if (mixer) mixer.update(delta);
+        
+        // 更新雪花位置
+        const posAttr = snowSystem.points.geometry.attributes.position;
+        const time = Date.now() * 0.001;
 
-        const pos = snowSystem.geometry.attributes.position.array;
-        for (let i = 0; i < 600; i++) {
-            const ix = i*3, iy = i*3+1, iz = i*3+2;
-            pos[ix] += snowVelocities[i].x; pos[iy] += snowVelocities[i].y; pos[iz] += snowVelocities[i].z;
-            if (isInteracting) {
-                snowVelocities[i].x += (Math.random()-0.5)*0.01;
-                snowVelocities[i].y += Math.random()*0.02;
-                snowVelocities[i].z += (Math.random()-0.5)*0.01;
-            } else {
-                snowVelocities[i].y -= 0.0005;
-                snowVelocities[i].multiplyScalar(0.95);
-                if(snowVelocities[i].y > -0.005) snowVelocities[i].y = -0.005; 
+        for (let i = 0; i < config.snowCount; i++) {
+            let x = posAttr.getX(i);
+            let y = posAttr.getY(i);
+            let z = posAttr.getZ(i);
+
+            // 垂直下落
+            y -= snowSystem.velocities[i * 3 + 1];
+
+            // 增加左右搖擺 (Wobble) 與 隨機飄移 (Drift)
+            const phase = snowSystem.phases[i];
+            x += Math.sin(time + phase) * config.wobbleSpeed;
+            z += Math.cos(time + phase) * config.wobbleSpeed;
+
+            // 加上基礎的微弱風向偏移
+            x += snowSystem.velocities[i * 3];
+            z += snowSystem.velocities[i * 3 + 2];
+
+            // 邊界重置
+            if (y < -5) {
+                y = 15;
+                x = (Math.random() - 0.5) * 20;
+                z = (Math.random() - 0.5) * 20;
             }
-            const dx = pos[ix], dy = pos[iy] - globeY, dz = pos[iz];
-            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-            if (dist > 1.45) {
-                const ratio = 1.45 / dist;
-                pos[ix] *= ratio; pos[iy] = globeY + (dy * ratio); pos[iz] *= ratio;
-                snowVelocities[i].multiplyScalar(-0.2);
-            }
-            if (pos[iy] < 0.25) { pos[iy] = 0.25; if(!isInteracting) snowVelocities[i].set(0,0,0); }
+
+            posAttr.setXYZ(i, x, y, z);
         }
-        snowSystem.geometry.attributes.position.needsUpdate = true;
-        if (interactTimer > 0) interactTimer--; else isInteracting = false;
-
-        const speed = document.getElementById('speedRange').value / 2500;
-        const targetY = document.getElementById('heightRange').value / 100;
-        textRotation += speed;
-        const relY = targetY - globeY, dynR = Math.sqrt(Math.max(0, 1.48*1.48 - relY*relY)) * 0.97;
-
-        charGroups.forEach((g, i) => {
-            const angle = textRotation - (i / charGroups.length) * Math.PI * 2;
-            g.position.set(Math.cos(angle) * dynR, targetY, Math.sin(angle) * dynR);
-            g.lookAt(0, targetY, 0); g.rotateY(Math.PI);
-        });
-
-        if (currentModel) currentModel.rotation.y += 0.005;
+        posAttr.needsUpdate = true;
 
         controls.update();
         renderer.render(scene, camera);
     }
 
-    document.getElementById('textInput').oninput = updateText;
-    document.getElementById('colorPicker').oninput = updateText;
-    document.getElementById('modelSelect').onchange = (e) => loadModel(e.target.value, false);
-    document.getElementById('shareBtn').onclick = () => {
-        const t = encodeURIComponent(document.getElementById('textInput').value);
-        const c = document.getElementById('colorPicker').value.replace('#','');
-        const m = encodeURIComponent(document.getElementById('modelSelect').value);
-        const h = document.getElementById('heightRange').value;
-        const s = document.getElementById('speedRange').value;
-        const url = `${window.location.origin}${window.location.pathname}?t=${t}&c=${c}&m=${m}&h=${h}&s=${s}&view=1`;
-        navigator.clipboard.writeText(url).then(() => alert("✅ 修復版連結已複製！"));
-    };
+    animate();
+
+    // 視窗縮放處理
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // --- 載入 GLB 模型 (範例佔位) ---
+    // 你可以將路徑替換成從 TRELLIS 或 UltraShape 生成的 URL
+    /*
+    const loader = new GLTFLoader();
+    loader.load('YOUR_MODEL_URL.glb', (gltf) => {
+        scene.add(gltf.scene);
+    });
+    */
+
 </script>
 </body>
 </html>
